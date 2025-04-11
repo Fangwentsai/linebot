@@ -91,10 +91,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal Server Error' });
 });
 
-// 更明确的端口设置
-const PORT = process.env.PORT === '10000' ? 3000 : (process.env.PORT || 3000);
-const server = app.listen(PORT, '0.0.0.0', () => {
-  const actualPort = server.address().port;
-  console.log(`尝试使用端口 ${PORT}`);
-  console.log(`服务器实际运行在端口 ${actualPort}`);
+// 移除所有端口相关的自定义设置，让 Render 完全控制
+app.listen(process.env.PORT || 3000, () => {
+  console.log('服务器已启动');
 });
