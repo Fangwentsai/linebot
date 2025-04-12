@@ -55,30 +55,23 @@ async function handleEvent(event) {
   const userMessage = event.message.text;
   
   try {
-    // 修改 input 格式
-    const response = await openai.responses.create({
-      model: "gpt-4o-mini",
-      input: [{
-        text: userMessage,
-        type: "text"
-      }],  // input 需要是一个包含 text 和 type 的对象
-      text: {
-        format: {
-          type: "text"
+    const response = await openai.chat.completions.create({
+      model: "gpt-4",  // 使用正確的模型名稱
+      messages: [
+        {
+          role: "user",
+          content: userMessage
         }
-      },
-      reasoning: {},
-      tools: [],
+      ],
       temperature: 1,
-      max_output_tokens: 2048,
-      top_p: 1,
-      store: true
+      max_tokens: 2048,
+      top_p: 1
     });
 
-    console.log('API Response:', response); // 添加日志以查看响应格式
+    console.log('API Response:', response);
 
-    // 获取回复内容
-    const aiResponse = response.output || response.text || JSON.stringify(response);
+    // 從回應中獲取生成的文本
+    const aiResponse = response.choices[0].message.content;
 
     return lineClient.replyMessage(event.replyToken, {
       type: 'text',
