@@ -33,17 +33,15 @@ const app = express();
 // 天氣預報 API 實現
 async function getWeatherForecast(cityName) {
   try {
-    // 使用 IP 地址而不是域名
-    const response = await axios.get('https://117.56.59.17/api/v1/rest/datastore/F-C0032-001', {
+    const response = await axios.get('https://opendata.cwb.gov.tw/api/v1/rest/datastore/F-C0032-001', {
       params: {
         Authorization: process.env.CWB_API_KEY,
-        locationName: cityName,
-        sort: 'time'
+        locationName: cityName
       },
-      // 添加 SSL/TLS 配置
-      httpsAgent: new https.Agent({
-        rejectUnauthorized: false // 注意：這只是臨時解決方案
-      })
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      }
     });
 
     if (!response.data.success) {
@@ -52,33 +50,46 @@ async function getWeatherForecast(cityName) {
 
     const location = response.data.records.location[0];
     const elements = location.weatherElement;
-
-    const weatherData = {
-      city: location.locationName,
-      forecast: []
+    
+    // 取得最新的預報資料（第一個時間段）
+    const currentPeriod = {
+      wx: elements.find(e => e.elementName === 'Wx').time[0],      // 天氣現象
+      pop: elements.find(e => e.elementName === 'PoP').time[0],    // 降雨機率
+      minT: elements.find(e => e.elementName === 'MinT').time[0],  // 最低溫度
+      maxT: elements.find(e => e.elementName === 'MaxT').time[0],  // 最高溫度
+      ci: elements.find(e => e.elementName === 'CI').time[0]       // 舒適度
     };
 
-    const timeIntervals = elements[0].time;
-    
-    timeIntervals.forEach((interval, index) => {
-      const startTime = new Date(interval.startTime);
-      const endTime = new Date(interval.endTime);
-      
-      const timeData = {
-        period: `${startTime.getMonth() + 1}/${startTime.getDate()} ${startTime.getHours()}:00 - ${endTime.getMonth() + 1}/${endTime.getDate()} ${endTime.getHours()}:00`,
-        wx: elements.find(e => e.elementName === 'Wx').time[index].parameter.parameterName,
-        pop: elements.find(e => e.elementName === 'PoP').time[index].parameter.parameterName,
-        minT: elements.find(e => e.elementName === 'MinT').time[index].parameter.parameterName,
-        maxT: elements.find(e => e.elementName === 'MaxT').time[index].parameter.parameterName,
-        ci: elements.find(e => e.elementName === 'CI').time[index].parameter.parameterName
-      };
-      
-      weatherData.forecast.push(timeData);
-    });
+    // 格式化天氣數據
+    const weatherData = {
+      city: location.locationName,
+      forecast: [{
+        period: `${new Date(currentPeriod.wx.startTime).toLocaleString('zh-TW')} 至 ${new Date(currentPeriod.wx.endTime).toLocaleString('zh-TW')}`,
+        wx: currentPeriod.wx.parameter.parameterName,
+        pop: currentPeriod.pop.parameter.parameterName,
+        minT: currentPeriod.minT.parameter.parameterName,
+        maxT: currentPeriod.maxT.parameter.parameterName,
+        ci: currentPeriod.ci.parameter.parameterName
+      }]
+    };
 
     return weatherData;
   } catch (error) {
     console.error('獲取天氣預報失敗:', error);
+    
+    // 添加更詳細的錯誤信息
+    if (error.response) {
+      // 服務器回應了錯誤狀態碼
+      console.error('錯誤狀態碼:', error.response.status);
+      console.error('錯誤信息:', error.response.data);
+    } else if (error.request) {
+      // 請求已發出，但沒有收到回應
+      console.error('沒有收到回應');
+    } else {
+      // 發生其他錯誤
+      console.error('錯誤:', error.message);
+    }
+    
     throw error;
   }
 }
