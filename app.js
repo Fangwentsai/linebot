@@ -30,12 +30,10 @@ app.get('/linebot/webhook', (req, res) => {
 
 // Webhook路由
 app.post('/linebot/webhook', line.middleware(lineConfig), async (req, res) => {
-  // 立即响应
   res.status(200).end();
   
   try {
     const events = req.body.events;
-    // 异步处理事件
     events.forEach(async (event) => {
       try {
         await handleEvent(event);
@@ -57,18 +55,26 @@ async function handleEvent(event) {
   const userMessage = event.message.text;
   
   try {
-    // 使用新版 OpenAI API
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4-mini",
-      messages: [
-        { role: "system", content: "你是一个有帮助的助手。" },
-        { role: "user", content: userMessage }
-      ],
-      temperature: 0.9,
-      max_tokens: 2048,
+    // 使用新的 API 格式
+    const response = await openai.responses.create({
+      model: "gpt-4o-mini",
+      input: [],
+      text: {
+        format: {
+          type: "text"
+        },
+        content: userMessage  // 添加用户消息
+      },
+      reasoning: {},
+      tools: [],
+      temperature: 1,
+      max_output_tokens: 2048,
+      top_p: 1,
+      store: true
     });
 
-    const aiResponse = completion.choices[0].message.content;
+    // 获取回复内容
+    const aiResponse = response.text.content;  // 根据实际响应格式调整
 
     return lineClient.replyMessage(event.replyToken, {
       type: 'text',
