@@ -56,7 +56,7 @@ async function handleEvent(event) {
   
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-4",  // 使用正確的模型名稱
+      model: "gpt-4o-mini",  // 使用正確的模型名稱
       messages: [
         {
           role: "user",
