@@ -55,10 +55,13 @@ async function handleEvent(event) {
   const userMessage = event.message.text;
   
   try {
-    // 简化请求格式
+    // 修改 input 格式
     const response = await openai.responses.create({
       model: "gpt-4o-mini",
-      input: [userMessage],  // 用户消息放在 input 数组中
+      input: [{
+        text: userMessage,
+        type: "text"
+      }],  // input 需要是一个包含 text 和 type 的对象
       text: {
         format: {
           type: "text"
