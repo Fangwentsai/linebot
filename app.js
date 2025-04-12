@@ -1,7 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const line = require('@line/bot-sdk');
-const { Configuration, OpenAIApi } = require('openai');
+const OpenAI = require('openai');
 
 // LINE配置
 const lineConfig = {
@@ -13,10 +13,9 @@ const lineConfig = {
 const lineClient = new line.Client(lineConfig);
 
 // 初始化 OpenAI
-const configuration = new Configuration({
+const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
-const openai = new OpenAIApi(configuration);
 
 const app = express();
 
@@ -58,8 +57,8 @@ async function handleEvent(event) {
   const userMessage = event.message.text;
   
   try {
-    // 使用 ChatGPT-4-mini
-    const completion = await openai.createChatCompletion({
+    // 使用新版 OpenAI API
+    const completion = await openai.chat.completions.create({
       model: "gpt-4-mini",
       messages: [
         { role: "system", content: "你是一个有帮助的助手。" },
@@ -69,7 +68,7 @@ async function handleEvent(event) {
       max_tokens: 2048,
     });
 
-    const aiResponse = completion.data.choices[0].message.content;
+    const aiResponse = completion.choices[0].message.content;
 
     return lineClient.replyMessage(event.replyToken, {
       type: 'text',
