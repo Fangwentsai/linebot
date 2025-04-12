@@ -5,7 +5,7 @@ const OpenAI = require('openai');
 const axios = require('axios');
 
 // 定義常量
-const GPT_MODEL = "gpt-4-mini";
+const GPT_MODEL = "gpt-4o-mini-2024-07-18";
 const CITIES = [
   '基隆市', '臺北市', '新北市', '桃園市', '新竹市', '新竹縣', 
   '苗栗縣', '臺中市', '彰化縣', '南投縣', '雲林縣', '嘉義市', 
