@@ -33,14 +33,13 @@ const app = express();
 // 天氣預報 API 實現
 async function getWeatherForecast(cityName) {
   try {
-    const response = await axios.get('https://opendata.cwb.gov.tw/api/v1/rest/datastore/F-C0032-001', {
+    const response = await axios.get('https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0032-001', {
       params: {
         Authorization: process.env.CWB_API_KEY,
         locationName: cityName
       },
       headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
+        'accept': 'application/json'
       }
     });
 
@@ -77,16 +76,12 @@ async function getWeatherForecast(cityName) {
   } catch (error) {
     console.error('獲取天氣預報失敗:', error);
     
-    // 添加更詳細的錯誤信息
     if (error.response) {
-      // 服務器回應了錯誤狀態碼
       console.error('錯誤狀態碼:', error.response.status);
       console.error('錯誤信息:', error.response.data);
     } else if (error.request) {
-      // 請求已發出，但沒有收到回應
       console.error('沒有收到回應');
     } else {
-      // 發生其他錯誤
       console.error('錯誤:', error.message);
     }
     
