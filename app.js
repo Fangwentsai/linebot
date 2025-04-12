@@ -3,6 +3,7 @@ const express = require('express');
 const line = require('@line/bot-sdk');
 const OpenAI = require('openai');
 const axios = require('axios');
+const https = require('https');
 
 // 定義常量
 const GPT_MODEL = "gpt-4o-mini-2024-07-18";
@@ -32,12 +33,17 @@ const app = express();
 // 天氣預報 API 實現
 async function getWeatherForecast(cityName) {
   try {
-    const response = await axios.get('https://opendata.cwb.gov.tw/api/v1/rest/datastore/F-C0032-001', {
+    // 使用 IP 地址而不是域名
+    const response = await axios.get('https://117.56.59.17/api/v1/rest/datastore/F-C0032-001', {
       params: {
         Authorization: process.env.CWB_API_KEY,
         locationName: cityName,
         sort: 'time'
-      }
+      },
+      // 添加 SSL/TLS 配置
+      httpsAgent: new https.Agent({
+        rejectUnauthorized: false // 注意：這只是臨時解決方案
+      })
     });
 
     if (!response.data.success) {
@@ -77,6 +83,38 @@ async function getWeatherForecast(cityName) {
   }
 }
 
+// 定義關鍵字列表
+const WEATHER_KEYWORDS = ['天氣', '氣溫', '下雨', '會不會雨', '天氣如何', '氣象'];
+
+// 定義縣市和其對應的鄉鎮區，包含多種可能的輸入方式
+const DISTRICT_TO_CITY = {
+  // 新北市
+  '中和': '新北市', '中和區': '新北市',
+  '永和': '新北市', '永和區': '新北市',
+  '板橋': '新北市', '板橋區': '新北市',
+  '三重': '新北市', '三重區': '新北市',
+  '新莊': '新北市', '新莊區': '新北市',
+  '土城': '新北市', '土城區': '新北市',
+  '蘆洲': '新北市', '蘆洲區': '新北市',
+  '汐止': '新北市', '汐止區': '新北市',
+  '樹林': '新北市', '樹林區': '新北市',
+  '淡水': '新北市', '淡水區': '新北市',
+
+  // 台北市
+  '信義': '臺北市', '信義區': '臺北市',
+  '大安': '臺北市', '大安區': '臺北市',
+  '松山': '臺北市', '松山區': '臺北市',
+  '內湖': '臺北市', '內湖區': '臺北市',
+  '南港': '臺北市', '南港區': '臺北市',
+  '中山': '臺北市', '中山區': '臺北市',
+  '萬華': '臺北市', '萬華區': '臺北市',
+  '文山': '臺北市', '文山區': '臺北市',
+  '北投': '臺北市', '北投區': '臺北市',
+  '士林': '臺北市', '士林區': '臺北市',
+
+  // 可以繼續添加其他縣市的地區...
+};
+
 // 健康檢查路由
 app.get('/', (req, res) => {
   res.status(200).json({ status: 'ok' });
@@ -113,19 +151,45 @@ async function handleEvent(event) {
   const userMessage = event.message.text;
   
   try {
-    // 處理天氣查詢
-    if (userMessage.includes('天氣')) {
-      let city = userMessage.replace('天氣', '').trim();
-      
-      // 如果沒有指定城市
-      if (!city) {
+    // 檢查是否包含天氣相關關鍵字
+    const hasWeatherKeyword = WEATHER_KEYWORDS.some(keyword => userMessage.includes(keyword));
+    
+    if (hasWeatherKeyword) {
+      // 移除所有天氣關鍵字，獲取地區名稱
+      let query = userMessage;
+      WEATHER_KEYWORDS.forEach(keyword => {
+        query = query.replace(keyword, '');
+      });
+      query = query.replace(/的|是|如何|怎樣|嗎/g, '').trim(); // 移除常見的語氣詞
+
+      let city = query;
+
+      // 檢查是否是地區查詢
+      for (const [district, cityName] of Object.entries(DISTRICT_TO_CITY)) {
+        if (query.includes(district)) {
+          city = cityName;
+          query = district; // 保存原始查詢的地區名
+          break;
+        }
+      }
+
+      // 處理台/臺的差異
+      if (city.includes('台')) {
+        city = city.replace('台', '臺');
+      }
+
+      if (!query) {
         const response = await openai.chat.completions.create({
           model: GPT_MODEL,
           messages: [
             {
               role: "system",
-              content: `你是一個天氣助手。當用戶沒有指定具體城市時，請友善地詢問他們想查詢哪個城市的天氣。
-可查詢的城市列表：${CITIES.join('、')}`
+              content: `你是一個天氣助手。當用戶詢問天氣但沒有指定地區時，請友善地詢問他們想查詢哪個地區的天氣。
+你可以告訴他們可以直接說地區名稱，例如：
+- 中和天氣如何？
+- 我想知道信義區的天氣
+- 淡水會不會下雨
+- 新莊氣溫`
             },
             {
               role: "user",
@@ -141,11 +205,6 @@ async function handleEvent(event) {
         });
       }
 
-      // 處理台/臺的差異
-      if (city.includes('台')) {
-        city = city.replace('台', '臺');
-      }
-
       // 檢查是否為有效的縣市名稱
       if (!CITIES.includes(city)) {
         const response = await openai.chat.completions.create({
@@ -153,8 +212,12 @@ async function handleEvent(event) {
           messages: [
             {
               role: "system",
-              content: `你是一個天氣助手。用戶輸入了無效的城市名稱「${city}」。請友善地告訴他正確的城市名稱格式。
-可查詢的城市列表：${CITIES.join('、')}`
+              content: `你是一個天氣助手。用戶想查詢「${query}」的天氣，但這個地區不在支援範圍內。
+請友善地告訴他可以查詢的地區範圍，並舉例說明幾種提問方式：
+- 直接說地區名：中和天氣？
+- 完整地區名：中和區天氣
+- 詢問方式：淡水會不會下雨？
+- 簡單提問：新莊氣溫`
             },
             {
               role: "user",
@@ -173,13 +236,20 @@ async function handleEvent(event) {
       // 獲取天氣數據
       const weatherData = await getWeatherForecast(city);
       
+      // 在天氣數據中添加查詢的地區信息
+      if (query !== city) {
+        weatherData.district = query;
+      }
+      
       // 使用 GPT 生成更自然的天氣描述
       const response = await openai.chat.completions.create({
         model: GPT_MODEL,
         messages: [
           {
             role: "system",
-            content: "你是一個天氣播報員。請用自然且友善的語氣描述天氣預報信息。加入一些生活建議。"
+            content: "你是一個天氣播報員。請用自然且友善的語氣描述天氣預報信息。" + 
+                    (weatherData.district ? `這是${weatherData.district}的天氣預報，位於${weatherData.city}。` : "") +
+                    "請加入一些生活建議，口語化一點，就像在跟朋友聊天一樣。"
           },
           {
             role: "user",
@@ -219,33 +289,10 @@ async function handleEvent(event) {
     
   } catch (error) {
     console.error('處理訊息失敗:', error);
-    
-    try {
-      const response = await openai.chat.completions.create({
-        model: GPT_MODEL,
-        messages: [
-          {
-            role: "system",
-            content: "請用友善的方式告訴用戶發生了錯誤，並給出一些建議。"
-          },
-          {
-            role: "user",
-            content: `發生錯誤：${error.message}`
-          }
-        ],
-        temperature: 0.7
-      });
-
-      return lineClient.replyMessage(event.replyToken, {
-        type: 'text',
-        text: response.choices[0].message.content
-      });
-    } catch (gptError) {
-      return lineClient.replyMessage(event.replyToken, {
-        type: 'text',
-        text: '抱歉，系統暫時無法提供服務，請稍後再試。'
-      });
-    }
+    return lineClient.replyMessage(event.replyToken, {
+      type: 'text',
+      text: `抱歉，獲取天氣信息時發生錯誤：${error.message}`
+    });
   }
 }
 
