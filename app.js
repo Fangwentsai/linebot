@@ -55,15 +55,14 @@ async function handleEvent(event) {
   const userMessage = event.message.text;
   
   try {
-    // 使用新的 API 格式
+    // 简化请求格式
     const response = await openai.responses.create({
       model: "gpt-4o-mini",
-      input: [],
+      input: [userMessage],  // 用户消息放在 input 数组中
       text: {
         format: {
           type: "text"
-        },
-        content: userMessage  // 添加用户消息
+        }
       },
       reasoning: {},
       tools: [],
@@ -73,15 +72,17 @@ async function handleEvent(event) {
       store: true
     });
 
+    console.log('API Response:', response); // 添加日志以查看响应格式
+
     // 获取回复内容
-    const aiResponse = response.text.content;  // 根据实际响应格式调整
+    const aiResponse = response.output || response.text || JSON.stringify(response);
 
     return lineClient.replyMessage(event.replyToken, {
       type: 'text',
       text: aiResponse
     });
   } catch (error) {
-    console.error("API错误:", error);
+    console.error("API错误详情:", error);
     return lineClient.replyMessage(event.replyToken, {
       type: 'text',
       text: `系统错误: ${error.message}\n请稍后再试。`
