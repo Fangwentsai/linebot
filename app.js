@@ -1,7 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const line = require('@line/bot-sdk');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { Configuration, OpenAIApi } = require('openai');
 
 // LINE配置
 const lineConfig = {
@@ -12,8 +12,11 @@ const lineConfig = {
 // 初始化LINE客户端
 const lineClient = new line.Client(lineConfig);
 
-// 初始化Gemini
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+// 初始化 OpenAI
+const configuration = new Configuration({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+const openai = new OpenAIApi(configuration);
 
 const app = express();
 
@@ -55,29 +58,25 @@ async function handleEvent(event) {
   const userMessage = event.message.text;
   
   try {
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-2.0-flash-lite",
-      generationConfig: {
-        temperature: 0.9,
-        topK: 1,
-        topP: 1,
-        maxOutputTokens: 2048,
-      },
+    // 使用 ChatGPT-4-mini
+    const completion = await openai.createChatCompletion({
+      model: "gpt-4-mini",
+      messages: [
+        { role: "system", content: "你是一个有帮助的助手。" },
+        { role: "user", content: userMessage }
+      ],
+      temperature: 0.9,
+      max_tokens: 2048,
     });
 
-    const result = await model.generateContent({
-      contents: [{ role: "user", parts: [{ text: userMessage }] }]
-    });
-    
-    const response = await result.response;
-    const aiResponse = response.text();
+    const aiResponse = completion.data.choices[0].message.content;
 
     return lineClient.replyMessage(event.replyToken, {
       type: 'text',
       text: aiResponse
     });
   } catch (error) {
-    console.error("Gemini API错误:", error);
+    console.error("API错误:", error);
     return lineClient.replyMessage(event.replyToken, {
       type: 'text',
       text: `系统错误: ${error.message}\n请稍后再试。`
@@ -91,7 +90,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal Server Error' });
 });
 
-// 移除所有端口相关的自定义设置，让 Render 完全控制
+// 启动服务器
 app.listen(process.env.PORT || 3000, () => {
   console.log('服务器已启动');
 });
