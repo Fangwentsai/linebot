@@ -43,23 +43,18 @@ async function getWeatherForecast(locationInfo) {
       district: locationInfo.district
     });
 
-    // API 請求
     const response = await axios.get('https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0032-001', {
       params: {
         Authorization: process.env.CWB_API_KEY,
-        locationName: locationInfo.city,  // 這個 API 只需要縣市名稱
+        locationName: locationInfo.city,
         format: 'JSON'
       }
     });
 
-    console.log('API 響應:', JSON.stringify(response.data, null, 2));
-
-    // 檢查響應
     if (!response.data?.success || response.data.success !== 'true') {
       throw new Error('API 請求失敗');
     }
 
-    // 獲取天氣資料
     const locations = response.data.records.location;
     const targetLocation = locations.find(loc => loc.locationName === locationInfo.city);
 
@@ -67,9 +62,16 @@ async function getWeatherForecast(locationInfo) {
       throw new Error(`找不到 ${locationInfo.city} 的天氣資料`);
     }
 
-    // 解析天氣要素
     const weatherElements = targetLocation.weatherElement;
-    const weather = {
+    const timeInfo = weatherElements[0].time[0];
+    
+    // 整理天氣數據
+    const weatherData = {
+      locationName: locationInfo.district ? 
+        `${locationInfo.city}${locationInfo.district}` : 
+        locationInfo.city,
+      startTime: timeInfo.startTime,
+      endTime: timeInfo.endTime,
       description: weatherElements.find(e => e.elementName === 'Wx')?.time[0]?.parameter?.parameterName,
       rainProb: weatherElements.find(e => e.elementName === 'PoP')?.time[0]?.parameter?.parameterName,
       minTemp: weatherElements.find(e => e.elementName === 'MinT')?.time[0]?.parameter?.parameterName,
@@ -77,20 +79,12 @@ async function getWeatherForecast(locationInfo) {
       comfort: weatherElements.find(e => e.elementName === 'CI')?.time[0]?.parameter?.parameterName
     };
 
-    // 取得時間資訊
-    const timeInfo = weatherElements[0].time[0];
+    // 隨機選擇一種回應風格
+    const styles = ['formal', 'casual', 'trendy'];
+    const randomStyle = styles[Math.floor(Math.random() * styles.length)];
     
-    // 格式化回應
-    const locationName = locationInfo.district ? 
-      `${locationInfo.city}${locationInfo.district}` : 
-      locationInfo.city;
-
-    return `${locationName}天氣預報：
-時間：${timeInfo.startTime} 至 ${timeInfo.endTime}
-溫度：${weather.minTemp}°C ~ ${weather.maxTemp}°C
-天氣：${weather.description}
-降雨機率：${weather.rainProb}%
-舒適度：${weather.comfort}`;
+    // 使用對應的模板生成回應
+    return RESPONSE_TEMPLATES[randomStyle](weatherData);
 
   } catch (error) {
     console.error('天氣查詢失敗:', error);
