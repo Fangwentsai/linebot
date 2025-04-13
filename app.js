@@ -34,13 +34,7 @@ const app = express();
 // 天氣預報 API 實現
 async function getWeatherForecast(locationInfo) {
   try {
-    // 檢查輸入是否是有效的位置信息對象
-    if (!locationInfo || typeof locationInfo !== 'object') {
-      console.error('Invalid locationInfo:', locationInfo);
-      throw new Error('無效的位置信息');
-    }
-
-    if (!locationInfo.city) {
+    if (!locationInfo?.city) {
       throw new Error('無法識別地區');
     }
 
@@ -49,140 +43,76 @@ async function getWeatherForecast(locationInfo) {
       throw new Error(`抱歉，目前不支援 ${locationInfo.city} 的天氣查詢`);
     }
 
-    console.log('正在查詢天氣資料:', {
+    console.log('開始查詢天氣:', {
       city: locationInfo.city,
       district: locationInfo.district,
-      cityId: cityData.id
+      id: cityData.id
     });
 
     // API 請求
-    const response = await axios.get('https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-D0047-093', {
+    const response = await axios.get('https://opendata.cwa.gov.tw/api/v1/rest/datastore/' + cityData.id, {
       params: {
         Authorization: process.env.CWB_API_KEY,
-        locationId: cityData.id,
+        format: 'JSON',
         locationName: locationInfo.district ? cityData.districts[locationInfo.district] : '',
-        elementName: 'T,Wx,PoP12h,RH,CI',
+        elementName: 'MinT,MaxT,PoP12h,Wx,RH,CI',
         sort: 'time'
-      },
-      headers: {
-        'accept': 'application/json'
       }
     });
 
-    console.log('API 請求參數:', {
-      locationId: cityData.id,
-      locationName: locationInfo.district ? cityData.districts[locationInfo.district] : '',
-      elementName: 'T,Wx,PoP12h,RH,CI'
-    });
-
-    // 輸出完整的 API 響應以進行調試
-    console.log('API 完整響應:', JSON.stringify(response.data, null, 2));
-
-    // 檢查基本響應結構
-    if (!response.data || response.data.success !== 'true') {
-      console.error('API 響應無效:', response.data);
+    // 檢查響應
+    if (!response.data?.success || response.data.success !== 'true') {
       throw new Error('API 請求失敗');
     }
 
-    // 檢查並獲取位置資料
-    const locationsData = response.data.records?.Locations?.[0];
-    if (!locationsData || !Array.isArray(locationsData.Location)) {
-      console.error('無效的位置資料結構:', locationsData);
-      throw new Error('無效的天氣數據格式');
+    // 獲取地點資料
+    const locations = response.data.records.locations[0].location;
+    if (!Array.isArray(locations)) {
+      throw new Error('無效的資料格式');
     }
 
-    console.log('城市資訊:', {
-      name: locationsData.LocationsName,
-      description: locationsData.DatasetDescription,
-      locationCount: locationsData.Location.length
-    });
+    // 找到目標地區
+    const targetLocation = locationInfo.district ?
+      locations.find(loc => loc.locationName === cityData.districts[locationInfo.district]) :
+      locations[0];
 
-    // 尋找目標地區
-    let targetLocation;
-    if (locationInfo.district) {
-      const fullDistrictName = cityData.districts[locationInfo.district];
-      console.log('搜尋地區:', {
-        district: locationInfo.district,
-        fullName: fullDistrictName,
-        availableLocations: locationsData.Location.map(loc => loc.LocationName)
-      });
-      
-      targetLocation = locationsData.Location.find(loc => 
-        loc.LocationName === fullDistrictName
-      );
-
-      if (!targetLocation) {
-        throw new Error(`找不到 ${locationInfo.district} 的天氣資料`);
-      }
-    } else {
-      // 如果沒有指定地區，使用第一個地區的資料
-      targetLocation = locationsData.Location[0];
+    if (!targetLocation) {
+      throw new Error(`找不到 ${locationInfo.district || locationInfo.city} 的天氣資料`);
     }
 
-    console.log('找到的地區資料:', {
-      name: targetLocation.LocationName,
-      elements: targetLocation.WeatherElement?.map(e => e.ElementName)
-    });
-
-    // 取得天氣要素
-    const weatherElements = targetLocation.WeatherElement;
-    if (!Array.isArray(weatherElements)) {
-      throw new Error('天氣要素資料格式錯誤');
-    }
-
-    // 解析天氣要素
-    const elements = {
-      temp: weatherElements.find(e => e.ElementName === 'T'),
-      weather: weatherElements.find(e => e.ElementName === 'Wx'),
-      pop: weatherElements.find(e => e.ElementName === 'PoP12h'),
-      humidity: weatherElements.find(e => e.ElementName === 'RH'),
-      comfort: weatherElements.find(e => e.ElementName === 'CI')
+    // 解析天氣資料
+    const weather = {
+      minTemp: targetLocation.weatherElement.find(e => e.elementName === 'MinT')?.time[0]?.elementValue[0]?.value,
+      maxTemp: targetLocation.weatherElement.find(e => e.elementName === 'MaxT')?.time[0]?.elementValue[0]?.value,
+      description: targetLocation.weatherElement.find(e => e.elementName === 'Wx')?.time[0]?.elementValue[0]?.value,
+      rainProb: targetLocation.weatherElement.find(e => e.elementName === 'PoP12h')?.time[0]?.elementValue[0]?.value,
+      humidity: targetLocation.weatherElement.find(e => e.elementName === 'RH')?.time[0]?.elementValue[0]?.value,
+      comfort: targetLocation.weatherElement.find(e => e.elementName === 'CI')?.time[0]?.elementValue[0]?.value
     };
 
-    // 檢查必要的天氣要素是否存在
-    if (!elements.temp?.Time?.[0] || !elements.weather?.Time?.[0]) {
-      console.error('缺少必要的天氣要素:', elements);
-      throw new Error('天氣數據不完整');
-    }
-
-    const currentTime = elements.temp.Time[0];
+    // 取得時間資訊
+    const timeInfo = targetLocation.weatherElement[0].time[0];
     
-    // 格式化天氣資訊
+    // 格式化回應
     const locationName = locationInfo.district ? 
       `${locationInfo.city}${locationInfo.district}` : 
       locationInfo.city;
 
-    const weatherInfo = `${locationName}天氣預報：
-時間：${new Date(currentTime.StartTime).toLocaleString('zh-TW')} 至 ${new Date(currentTime.EndTime).toLocaleString('zh-TW')}
-溫度：${elements.temp.Time[0].ElementValue[0].Value}°C
-天氣：${elements.weather.Time[0].ElementValue[0].Value}
-降雨機率：${elements.pop?.Time?.[0]?.ElementValue?.[0]?.Value ? elements.pop.Time[0].ElementValue[0].Value + '%' : '無資料'}
-相對濕度：${elements.humidity?.Time?.[0]?.ElementValue?.[0]?.Value ? elements.humidity.Time[0].ElementValue[0].Value + '%' : '無資料'}
-舒適度：${elements.comfort?.Time?.[0]?.ElementValue?.[0]?.Value || '無資料'}`;
-
-    return weatherInfo;
+    return `${locationName}天氣預報：
+時間：${new Date(timeInfo.startTime).toLocaleString('zh-TW')} 至 ${new Date(timeInfo.endTime).toLocaleString('zh-TW')}
+溫度：${weather.minTemp}°C ~ ${weather.maxTemp}°C
+天氣：${weather.description}
+降雨機率：${weather.rainProb ? weather.rainProb + '%' : '無資料'}
+相對濕度：${weather.humidity ? weather.humidity + '%' : '無資料'}
+舒適度：${weather.comfort || '無資料'}`;
 
   } catch (error) {
-    console.error('獲取天氣預報失敗:', error);
-    if (error.response) {
-      console.error('API 錯誤詳情:', {
-        status: error.response.status,
-        data: error.response.data
-      });
-    }
-
-    // 根據錯誤類型返回友善的錯誤訊息
-    if (error.message.includes('找不到') || error.message.includes('無法識別')) {
-      return `抱歉，我無法提供${locationInfo.district || locationInfo.city}的天氣資訊。
+    console.error('天氣查詢失敗:', error);
+    return `抱歉，無法取得${locationInfo.district || locationInfo.city}的天氣資訊。
 您可以試試：
-- 直接輸入城市名：台北天氣
-- 輸入完整區名：中和區天氣
-- 或是其他地區：信義區天氣`;
-    } else if (error.message.includes('API')) {
-      return '抱歉，目前無法取得氣象資料，請稍後再試。';
-    } else {
-      return '抱歉，系統發生問題，請稍後再試。如果問題持續發生，請通知管理員。';
-    }
+- 直接查詢：台北天氣
+- 查詢區域：中和區天氣
+- 其他地區：信義區天氣`;
   }
 }
 
