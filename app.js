@@ -51,6 +51,9 @@ async function getWeatherForecast(locationInfo) {
       }
     });
 
+    console.log('API 響應狀態:', response.status);
+    console.log('API 響應數據:', JSON.stringify(response.data, null, 2));
+
     if (!response.data?.success || response.data.success !== 'true') {
       throw new Error('API 請求失敗');
     }
@@ -72,19 +75,26 @@ async function getWeatherForecast(locationInfo) {
         locationInfo.city,
       startTime: timeInfo.startTime,
       endTime: timeInfo.endTime,
-      description: weatherElements.find(e => e.elementName === 'Wx')?.time[0]?.parameter?.parameterName,
-      rainProb: weatherElements.find(e => e.elementName === 'PoP')?.time[0]?.parameter?.parameterName,
-      minTemp: weatherElements.find(e => e.elementName === 'MinT')?.time[0]?.parameter?.parameterName,
-      maxTemp: weatherElements.find(e => e.elementName === 'MaxT')?.time[0]?.parameter?.parameterName,
-      comfort: weatherElements.find(e => e.elementName === 'CI')?.time[0]?.parameter?.parameterName
+      description: weatherElements.find(e => e.elementName === 'Wx')?.time[0]?.parameter?.parameterName || '無資料',
+      rainProb: weatherElements.find(e => e.elementName === 'PoP')?.time[0]?.parameter?.parameterName || '0',
+      minTemp: weatherElements.find(e => e.elementName === 'MinT')?.time[0]?.parameter?.parameterName || '0',
+      maxTemp: weatherElements.find(e => e.elementName === 'MaxT')?.time[0]?.parameter?.parameterName || '0',
+      comfort: weatherElements.find(e => e.elementName === 'CI')?.time[0]?.parameter?.parameterName || '無資料'
     };
+
+    console.log('整理後的天氣數據:', weatherData);
 
     // 隨機選擇一種回應風格
     const styles = ['formal', 'casual', 'trendy'];
     const randomStyle = styles[Math.floor(Math.random() * styles.length)];
     
+    console.log('選擇的回應風格:', randomStyle);
+
     // 使用對應的模板生成回應
-    return RESPONSE_TEMPLATES[randomStyle](weatherData);
+    const response_text = RESPONSE_TEMPLATES[randomStyle](weatherData);
+    console.log('生成的回應:', response_text);
+
+    return response_text;
 
   } catch (error) {
     console.error('天氣查詢失敗:', error);
@@ -94,7 +104,10 @@ async function getWeatherForecast(locationInfo) {
         data: error.response.data
       });
     }
-    return `抱歉，無法取得${locationInfo.district || locationInfo.city}的天氣資訊。
+    if (error.stack) {
+      console.error('錯誤堆疊:', error.stack);
+    }
+    return `抱歉，無法取得${locationInfo?.district || locationInfo?.city || '指定地區'}的天氣資訊。
 您可以試試：
 - 台北市天氣
 - 新北市天氣
