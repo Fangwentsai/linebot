@@ -34,11 +34,17 @@ const app = express();
 // 天氣預報 API 實現
 async function getWeatherForecast(input) {
   try {
+    // 確保 input 是字符串類型
+    if (typeof input !== 'string') {
+      console.error('Invalid input type in getWeatherForecast:', typeof input, input);
+      throw new Error('無效的輸入格式');
+    }
+
     // 解析輸入的地區名稱
     const location = parseLocation(input);
     
-    if (!location.city) {
-      throw new Error(`抱歉，無法識別地區 "${input}"`);
+    if (location.error) {
+      return location.error;
     }
 
     const cityData = LOCATION_MAPPING[location.city];
@@ -104,21 +110,10 @@ async function getWeatherForecast(input) {
     };
   } catch (error) {
     console.error('獲取天氣預報失敗:', error);
-    if (error.message.includes('找不到') || error.message.includes('無法識別')) {
-      return {
-        error: true,
-        message: `抱歉，我無法提供${input}的天氣資訊。不過，我可以協助查詢其他地區的天氣。
-
-您可以試著這樣提問：
-- 直接說地區名：中和天氣？
-- 完整地區名：中和區天氣
-- 詢問方式：淡水會不會下雨？
-- 簡單提問：新莊氣溫
-
-請告訴我您想查詢的其他地區，我將很樂意幫助您！`
-      };
-    }
-    throw error;
+    return `抱歉，我無法提供天氣資訊。請試著用更簡單的方式詢問，例如：
+- 台北天氣
+- 中和區天氣
+- 信義區天氣`;
   }
 }
 
@@ -238,6 +233,16 @@ app.listen(port, () => {
 
 // 地區名稱處理函數
 function parseLocation(input) {
+  // 確保 input 是字符串
+  if (typeof input !== 'string') {
+    console.error('Invalid input type:', typeof input, input);
+    return {
+      city: null,
+      district: null,
+      error: '抱歉，我無法理解您的輸入。請試著直接輸入地區名稱，例如：台北天氣、中和區天氣'
+    };
+  }
+
   // 擴充移除的詞彙，包含網路用語和口語表達
   const removeWords = [
     // 一般問句詞
@@ -256,86 +261,95 @@ function parseLocation(input) {
     '😊', '😂', '🤔', '👍', '🙏'
   ];
 
-  // 建立正則表達式，移除所有指定詞彙
-  const removePattern = new RegExp(removeWords.join('|'), 'g');
-  input = input.replace(removePattern, '').trim();
+  try {
+    // 建立正則表達式，移除所有指定詞彙
+    const removePattern = new RegExp(removeWords.join('|'), 'g');
+    input = input.replace(removePattern, '').trim();
 
-  // 如果清理後的輸入為空，回傳錯誤訊息
-  if (!input) {
-    return {
-      city: null,
-      district: null,
-      error: '請告訴我您想查詢哪個地區的天氣喔！例如：台北天氣、中和區天氣'
-    };
-  }
-
-  let cityName = null;
-  let districtName = null;
-
-  // 先檢查是否為鄉鎮市區名稱
-  for (const [city, data] of Object.entries(LOCATION_MAPPING)) {
-    for (const [district, fullName] of Object.entries(data.districts)) {
-      if (input.includes(district)) {
-        cityName = city;
-        districtName = district;
-        break;
-      }
+    // 如果清理後的輸入為空，回傳錯誤訊息
+    if (!input) {
+      return {
+        city: null,
+        district: null,
+        error: '請告訴我您想查詢哪個地區的天氣喔！例如：台北天氣、中和區天氣'
+      };
     }
-    if (cityName) break;
-  }
 
-  // 如果沒找到，檢查別名
-  if (!cityName) {
-    for (const [alias, district] of Object.entries(DISTRICT_ALIASES)) {
-      if (input.includes(alias)) {
-        // 找出這個地區屬於哪個城市
-        for (const [city, data] of Object.entries(LOCATION_MAPPING)) {
-          if (data.districts[district]) {
-            cityName = city;
-            districtName = district;
-            break;
-          }
+    let cityName = null;
+    let districtName = null;
+
+    // 先檢查是否為鄉鎮市區名稱
+    for (const [city, data] of Object.entries(LOCATION_MAPPING)) {
+      for (const [district, fullName] of Object.entries(data.districts)) {
+        if (input.includes(district)) {
+          cityName = city;
+          districtName = district;
+          break;
         }
-        if (cityName) break;
       }
-    }
-  }
-
-  // 如果還是沒找到，檢查是否只有城市名
-  if (!cityName) {
-    // 先檢查完整城市名
-    for (const city of Object.keys(LOCATION_MAPPING)) {
-      if (input.includes(city)) {
-        cityName = city;
-        break;
-      }
+      if (cityName) break;
     }
 
-    // 如果沒找到完整城市名，檢查別名
+    // 如果沒找到，檢查別名
     if (!cityName) {
-      for (const [alias, city] of Object.entries(CITY_ALIASES)) {
+      for (const [alias, district] of Object.entries(DISTRICT_ALIASES)) {
         if (input.includes(alias)) {
+          // 找出這個地區屬於哪個城市
+          for (const [city, data] of Object.entries(LOCATION_MAPPING)) {
+            if (data.districts[district]) {
+              cityName = city;
+              districtName = district;
+              break;
+            }
+          }
+          if (cityName) break;
+        }
+      }
+    }
+
+    // 如果還是沒找到，檢查是否只有城市名
+    if (!cityName) {
+      // 先檢查完整城市名
+      for (const city of Object.keys(LOCATION_MAPPING)) {
+        if (input.includes(city)) {
           cityName = city;
           break;
         }
       }
-    }
-  }
 
-  // 如果都沒找到對應的地區，給出更友善的提示
-  if (!cityName && !districtName) {
-    return {
-      city: null,
-      district: null,
-      error: `抱歉，我看不懂「${input}」是哪個地方耶！可以試試：
+      // 如果沒找到完整城市名，檢查別名
+      if (!cityName) {
+        for (const [alias, city] of Object.entries(CITY_ALIASES)) {
+          if (input.includes(alias)) {
+            cityName = city;
+            break;
+          }
+        }
+      }
+    }
+
+    // 如果都沒找到對應的地區，給出更友善的提示
+    if (!cityName && !districtName) {
+      return {
+        city: null,
+        district: null,
+        error: `抱歉，我看不懂「${input}」是哪個地方耶！可以試試：
 1. 直接說地名：台北、中和
 2. 完整區名：信義區、板橋區
 3. 簡單問句：中和天氣、北投區天氣`
+      };
+    }
+
+    return {
+      city: cityName,
+      district: districtName
+    };
+  } catch (error) {
+    console.error('Error in parseLocation:', error);
+    return {
+      city: null,
+      district: null,
+      error: '抱歉，處理您的請求時發生錯誤。請試著用更簡單的方式詢問，例如：台北天氣'
     };
   }
-
-  return {
-    city: cityName,
-    district: districtName
-  };
 }
