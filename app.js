@@ -32,24 +32,21 @@ const openai = new OpenAI({
 const app = express();
 
 // 天氣預報 API 實現
-async function getWeatherForecast(input) {
+async function getWeatherForecast(locationInfo) {
   try {
-    // 確保 input 是字符串類型
-    if (typeof input !== 'string') {
-      console.error('Invalid input type in getWeatherForecast:', typeof input, input);
-      throw new Error('無效的輸入格式');
+    // 檢查輸入是否是有效的位置信息對象
+    if (!locationInfo || typeof locationInfo !== 'object') {
+      console.error('Invalid locationInfo:', locationInfo);
+      throw new Error('無效的位置信息');
     }
 
-    // 解析輸入的地區名稱
-    const location = parseLocation(input);
-    
-    if (location.error) {
-      return location.error;
+    if (!locationInfo.city) {
+      throw new Error('無法識別地區');
     }
 
-    const cityData = LOCATION_MAPPING[location.city];
+    const cityData = LOCATION_MAPPING[locationInfo.city];
     if (!cityData) {
-      throw new Error(`抱歉，目前不支援 ${location.city} 的天氣查詢`);
+      throw new Error(`抱歉，目前不支援 ${locationInfo.city} 的天氣查詢`);
     }
 
     // 改用 F-D0047-093 API
@@ -73,11 +70,11 @@ async function getWeatherForecast(input) {
     let targetLocation;
 
     // 如果有指定區域，找到對應的區域資料
-    if (location.district) {
-      const fullDistrictName = cityData.districts[location.district];
+    if (locationInfo.district) {
+      const fullDistrictName = cityData.districts[locationInfo.district];
       targetLocation = locations.find(loc => loc.locationName === fullDistrictName);
       if (!targetLocation) {
-        throw new Error(`找不到 ${location.district} 的天氣資料`);
+        throw new Error(`找不到 ${locationInfo.district} 的天氣資料`);
       }
     } else {
       // 如果只有城市名，使用第一個區域的資料
@@ -96,24 +93,27 @@ async function getWeatherForecast(input) {
     // 取得最新的預報資料
     const currentTime = temp.time[0];
     
-    // 格式化天氣數據
-    return {
-      location: targetLocation.locationName,
-      forecast: [{
-        period: `${new Date(currentTime.startTime).toLocaleString('zh-TW')} 至 ${new Date(currentTime.endTime).toLocaleString('zh-TW')}`,
-        temperature: temp.time[0].elementValue[0].value,
-        weather: weather.time[0].elementValue[0].value,
-        pop: pop ? pop.time[0].elementValue[0].value : '無資料',
-        humidity: humidity.time[0].elementValue[0].value,
-        comfort: comfort.time[0].elementValue[0].value
-      }]
-    };
+    // 格式化回應訊息
+    const locationName = locationInfo.district ? `${locationInfo.city}${locationInfo.district}` : locationInfo.city;
+    const weatherInfo = `${locationName}天氣預報：
+時間：${new Date(currentTime.startTime).toLocaleString('zh-TW')} 至 ${new Date(currentTime.endTime).toLocaleString('zh-TW')}
+溫度：${temp.time[0].elementValue[0].value}°C
+天氣：${weather.time[0].elementValue[0].value}
+降雨機率：${pop ? pop.time[0].elementValue[0].value + '%' : '無資料'}
+相對濕度：${humidity.time[0].elementValue[0].value}%
+舒適度：${comfort.time[0].elementValue[0].value}`;
+
+    return weatherInfo;
+
   } catch (error) {
     console.error('獲取天氣預報失敗:', error);
-    return `抱歉，我無法提供天氣資訊。請試著用更簡單的方式詢問，例如：
+    if (error.message.includes('找不到') || error.message.includes('無法識別')) {
+      return `抱歉，我無法提供天氣資訊。請試著用更簡單的方式詢問，例如：
 - 台北天氣
 - 中和區天氣
 - 信義區天氣`;
+    }
+    throw error;
   }
 }
 
@@ -197,10 +197,10 @@ async function handleEvent(event) {
       text: response.choices[0].message.content
     });
   } catch (error) {
-    console.error('Error:', error);
+    console.error('處理事件時發生錯誤:', error);
     return lineClient.replyMessage(event.replyToken, {
       type: 'text',
-      text: '抱歉啦！系統有點小問題，請再試一次，或是換個問法問我吧！😅'
+      text: '抱歉，系統發生錯誤。請稍後再試。'
     });
   }
 }
