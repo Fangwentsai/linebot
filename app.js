@@ -442,9 +442,37 @@ app.listen(port, () => {
   console.log(`服務器已啟動，監聽端口 ${port}`);
 });
 
-// 地區名稱處理函數
+// 新增縣市簡稱對照表
+const CITY_SHORT_NAMES = {
+  '台北': '臺北市',
+  '台中': '臺中市',
+  '台南': '臺南市',
+  '台東': '臺東縣',
+  '桃園': '桃園市',
+  '新北': '新北市',
+  '南投': '南投縣',
+  '嘉義': null,  // 需要進一步確認是縣還是市
+  '新竹': null,  // 需要進一步確認是縣還是市
+  '屏東': '屏東縣',
+  '苗栗': '苗栗縣',
+  '彰化': '彰化縣',
+  '雲林': '雲林縣',
+  '宜蘭': '宜蘭縣',
+  '花蓮': '花蓮縣',
+  '澎湖': '澎湖縣',
+  '金門': '金門縣',
+  '連江': '連江縣',
+  '基隆': '基隆市',
+  '高雄': '高雄市'
+};
+
+// 需要進一步確認的地區
+const AMBIGUOUS_CITIES = {
+  '嘉義': ['嘉義市', '嘉義縣'],
+  '新竹': ['新竹市', '新竹縣']
+};
+
 function parseLocation(input) {
-  // 確保 input 是字符串
   if (typeof input !== 'string') {
     console.error('Invalid input type:', typeof input, input);
     return {
@@ -454,30 +482,24 @@ function parseLocation(input) {
     };
   }
 
-  // 擴充移除的詞彙，包含網路用語和口語表達
+  // 移除不必要的詞彙
   const removeWords = [
-    // 一般問句詞
     '嗨', '你好', '請問', '問一下', '想知道', '可以告訴我',
     '天氣', '氣溫', '溫度', '下雨', '降雨', '濕度', '會不會雨', '如何', '嗎',
-    // 網路用語和口語
     '欸', '欸欸', '誒', '誒誒', '欸幫', '幫我', '幫查', '查查', '查個',
     '好ㄇ', '好嗎', '好不好', '如何', '怎樣', '咧', '勒', '啦',
     '拜託', '感恩', '感謝', 'thx', '謝謝', '感恩der', '感恩低',
     '現在', '等等', '待會', '等一下',
     '我想', '想要', '要看', '看看', '幫忙', '拜託', 
     '今天', '明天', '後天', '早上', '中午', '晚上',
-    // 語氣詞
     'der', 'ㄉ', 'ㄋ', 'ㄇ', '喔', '唷', '耶', '呢', '啊', '欸', '誒',
-    // 表情符號（如果有的話也會被移除）
     '😊', '😂', '🤔', '👍', '🙏'
   ];
 
   try {
-    // 建立正則表達式，移除所有指定詞彙
     const removePattern = new RegExp(removeWords.join('|'), 'g');
     input = input.replace(removePattern, '').trim();
 
-    // 如果清理後的輸入為空，回傳錯誤訊息
     if (!input) {
       return {
         city: null,
@@ -501,11 +523,10 @@ function parseLocation(input) {
       if (cityName) break;
     }
 
-    // 如果沒找到，檢查別名
+    // 如果沒找到區名，檢查別名
     if (!cityName) {
       for (const [alias, district] of Object.entries(DISTRICT_ALIASES)) {
         if (input.includes(alias)) {
-          // 找出這個地區屬於哪個城市
           for (const [city, data] of Object.entries(LOCATION_MAPPING)) {
             if (data.districts[district]) {
               cityName = city;
@@ -518,9 +539,9 @@ function parseLocation(input) {
       }
     }
 
-    // 如果還是沒找到，檢查是否只有城市名
+    // 如果還是沒找到，檢查縣市名（包括簡稱）
     if (!cityName) {
-      // 先檢查完整城市名
+      // 檢查完整縣市名
       for (const city of Object.keys(LOCATION_MAPPING)) {
         if (input.includes(city)) {
           cityName = city;
@@ -528,7 +549,25 @@ function parseLocation(input) {
         }
       }
 
-      // 如果沒找到完整城市名，檢查別名
+      // 如果沒找到完整名，檢查簡稱
+      if (!cityName) {
+        for (const [shortName, fullName] of Object.entries(CITY_SHORT_NAMES)) {
+          if (input.includes(shortName)) {
+            // 如果是需要確認的地區（如嘉義、新竹）
+            if (AMBIGUOUS_CITIES[shortName]) {
+              return {
+                city: null,
+                district: null,
+                error: `抱歉，${shortName}有分${AMBIGUOUS_CITIES[shortName].join('和')}，請問您想查詢哪一個呢？`
+              };
+            }
+            cityName = fullName;
+            break;
+          }
+        }
+      }
+
+      // 最後檢查城市別名
       if (!cityName) {
         for (const [alias, city] of Object.entries(CITY_ALIASES)) {
           if (input.includes(alias)) {
@@ -539,7 +578,7 @@ function parseLocation(input) {
       }
     }
 
-    // 如果都沒找到對應的地區，給出更友善的提示
+    // 如果都沒找到對應的地區
     if (!cityName && !districtName) {
       return {
         city: null,
