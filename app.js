@@ -186,10 +186,20 @@ async function handleEvent(event) {
               `舒適度：${forecast.comfort}`
       });
     } catch (error) {
-      console.error('處理天氣查詢時發生錯誤:', error);
+      // 改進錯誤訊息
+      const friendlyMessage = `抱歉，我無法提供${userInput}的天氣資訊。
+
+您可以試著這樣問：
+- 縣市名：新竹縣天氣
+- 地區名：寶山鄉天氣
+- 簡單問：中和下雨嗎
+- 直接問：板橋氣溫
+
+請問您想查詢哪個地區的天氣呢？`;
+
       return lineClient.replyMessage(event.replyToken, {
         type: 'text',
-        text: '抱歉，取得天氣資訊時發生錯誤，請稍後再試。'
+        text: friendlyMessage
       });
     }
   }
@@ -219,7 +229,7 @@ async function handleEvent(event) {
 
 // 判斷是否為天氣查詢的函數
 function isWeatherQuery(text) {
-  const weatherKeywords = ['天氣', '氣溫', '溫度', '下雨', '降雨', '濕度', '會不會雨'];
+  const weatherKeywords = ['天氣', '氣溫', '溫度', '下雨', '降雨', '濕度', '會不會雨', '天氣如何', '會下雨'];
   return weatherKeywords.some(keyword => text.includes(keyword));
 }
 
@@ -237,57 +247,28 @@ app.listen(port, () => {
 
 // 地區名稱處理函數
 function parseLocation(input) {
-  // 移除所有空格
-  input = input.trim();
+  // 移除所有空格和一些常見的問句詞
+  input = input.replace(/嗨|你好|請問|問一下|想知道|可以告訴我|天氣|氣溫|溫度|下雨|降雨|濕度|會不會雨|如何|嗎/g, '').trim();
   
   let cityName = null;
   let districtName = null;
 
-  // 1. 先檢查完整城市名稱
+  // 先檢查是否為鄉鎮市區名稱
   for (const [city, data] of Object.entries(LOCATION_MAPPING)) {
-    if (input.includes(city)) {
-      cityName = city;
-      break;
-    }
-  }
-
-  // 2. 如果沒找到完整城市名，檢查別名
-  if (!cityName) {
-    for (const [alias, city] of Object.entries(CITY_ALIASES)) {
-      if (input.includes(alias)) {
-        cityName = city;
-        break;
-      }
-    }
-  }
-
-  // 3. 尋找地區名稱
-  if (cityName) {
-    const cityData = LOCATION_MAPPING[cityName];
-    // 先檢查完整地區名（包含「區」字）
-    for (const district of Object.keys(cityData.districts)) {
+    for (const [district, fullName] of Object.entries(data.districts)) {
       if (input.includes(district)) {
+        cityName = city;
         districtName = district;
         break;
       }
     }
+    if (cityName) break;
+  }
 
-    // 如果沒找到完整地區名，檢查別名
-    if (!districtName) {
-      for (const [alias, district] of Object.entries(DISTRICT_ALIASES)) {
-        if (input.includes(alias)) {
-          // 確認該區域確實屬於這個城市
-          if (cityData.districts[district]) {
-            districtName = district;
-            break;
-          }
-        }
-      }
-    }
-  } else {
-    // 4. 如果沒有找到城市名，嘗試從地區名反推
+  // 如果沒找到，檢查別名
+  if (!cityName) {
     for (const [alias, district] of Object.entries(DISTRICT_ALIASES)) {
-      if (input.includes(alias) || input.includes(district)) {
+      if (input.includes(alias)) {
         // 找出這個地區屬於哪個城市
         for (const [city, data] of Object.entries(LOCATION_MAPPING)) {
           if (data.districts[district]) {
@@ -301,8 +282,36 @@ function parseLocation(input) {
     }
   }
 
+  // 如果還是沒找到，檢查是否只有城市名
+  if (!cityName) {
+    // 先檢查完整城市名
+    for (const city of Object.keys(LOCATION_MAPPING)) {
+      if (input.includes(city)) {
+        cityName = city;
+        break;
+      }
+    }
+
+    // 如果沒找到完整城市名，檢查別名
+    if (!cityName) {
+      for (const [alias, city] of Object.entries(CITY_ALIASES)) {
+        if (input.includes(alias)) {
+          cityName = city;
+          break;
+        }
+      }
+    }
+  }
+
   return {
     city: cityName,
     district: districtName
   };
 }
+
+// 更新 DISTRICT_ALIASES，加入更多地區別名
+const DISTRICT_ALIASES = {
+  // ... 原有的別名 ...
+  '寶山': '寶山鄉',  // 新竹縣
+  '寶山鄉': '寶山鄉'
+};
