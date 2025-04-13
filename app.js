@@ -4,6 +4,7 @@ const line = require('@line/bot-sdk');
 const OpenAI = require('openai');
 const axios = require('axios');
 const https = require('https');
+const { LOCATION_MAPPING, DISTRICT_ALIASES, CITY_ALIASES } = require('./locationMapping');
 
 // 定義常量
 const GPT_MODEL = "gpt-4o-mini-2024-07-18";
@@ -92,35 +93,6 @@ async function getWeatherForecast(cityName) {
 // 定義關鍵字列表
 const WEATHER_KEYWORDS = ['天氣', '氣溫', '下雨', '會不會雨', '天氣如何', '氣象'];
 
-// 定義縣市和其對應的鄉鎮區，包含多種可能的輸入方式
-const DISTRICT_TO_CITY = {
-  // 新北市
-  '中和': '新北市', '中和區': '新北市',
-  '永和': '新北市', '永和區': '新北市',
-  '板橋': '新北市', '板橋區': '新北市',
-  '三重': '新北市', '三重區': '新北市',
-  '新莊': '新北市', '新莊區': '新北市',
-  '土城': '新北市', '土城區': '新北市',
-  '蘆洲': '新北市', '蘆洲區': '新北市',
-  '汐止': '新北市', '汐止區': '新北市',
-  '樹林': '新北市', '樹林區': '新北市',
-  '淡水': '新北市', '淡水區': '新北市',
-
-  // 台北市
-  '信義': '臺北市', '信義區': '臺北市',
-  '大安': '臺北市', '大安區': '臺北市',
-  '松山': '臺北市', '松山區': '臺北市',
-  '內湖': '臺北市', '內湖區': '臺北市',
-  '南港': '臺北市', '南港區': '臺北市',
-  '中山': '臺北市', '中山區': '臺北市',
-  '萬華': '臺北市', '萬華區': '臺北市',
-  '文山': '臺北市', '文山區': '臺北市',
-  '北投': '臺北市', '北投區': '臺北市',
-  '士林': '臺北市', '士林區': '臺北市',
-
-  // 可以繼續添加其他縣市的地區...
-};
-
 // 健康檢查路由
 app.get('/', (req, res) => {
   res.status(200).json({ status: 'ok' });
@@ -171,7 +143,7 @@ async function handleEvent(event) {
       let city = query;
 
       // 檢查是否是地區查詢
-      for (const [district, cityName] of Object.entries(DISTRICT_TO_CITY)) {
+      for (const [district, cityName] of Object.entries(DISTRICT_ALIASES)) {
         if (query.includes(district)) {
           city = cityName;
           query = district; // 保存原始查詢的地區名
@@ -313,3 +285,75 @@ const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`服務器已啟動，監聽端口 ${port}`);
 });
+
+// 地區名稱處理函數
+function parseLocation(input) {
+  // 移除所有空格
+  input = input.trim();
+  
+  let cityName = null;
+  let districtName = null;
+
+  // 1. 先檢查完整城市名稱
+  for (const [city, data] of Object.entries(LOCATION_MAPPING)) {
+    if (input.includes(city)) {
+      cityName = city;
+      break;
+    }
+  }
+
+  // 2. 如果沒找到完整城市名，檢查別名
+  if (!cityName) {
+    for (const [alias, city] of Object.entries(CITY_ALIASES)) {
+      if (input.includes(alias)) {
+        cityName = city;
+        break;
+      }
+    }
+  }
+
+  // 3. 尋找地區名稱
+  if (cityName) {
+    const cityData = LOCATION_MAPPING[cityName];
+    // 先檢查完整地區名（包含「區」字）
+    for (const district of Object.keys(cityData.districts)) {
+      if (input.includes(district)) {
+        districtName = district;
+        break;
+      }
+    }
+
+    // 如果沒找到完整地區名，檢查別名
+    if (!districtName) {
+      for (const [alias, district] of Object.entries(DISTRICT_ALIASES)) {
+        if (input.includes(alias)) {
+          // 確認該區域確實屬於這個城市
+          if (cityData.districts[district]) {
+            districtName = district;
+            break;
+          }
+        }
+      }
+    }
+  } else {
+    // 4. 如果沒有找到城市名，嘗試從地區名反推
+    for (const [alias, district] of Object.entries(DISTRICT_ALIASES)) {
+      if (input.includes(alias) || input.includes(district)) {
+        // 找出這個地區屬於哪個城市
+        for (const [city, data] of Object.entries(LOCATION_MAPPING)) {
+          if (data.districts[district]) {
+            cityName = city;
+            districtName = district;
+            break;
+          }
+        }
+        if (cityName) break;
+      }
+    }
+  }
+
+  return {
+    city: cityName,
+    district: districtName
+  };
+}
