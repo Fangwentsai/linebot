@@ -511,7 +511,7 @@ function parseLocation(input) {
     let cityName = null;
     let districtName = null;
 
-    // 先檢查是否為鄉鎮市區名稱
+    // 1. 先檢查是否為完整行政區名稱（例如：寶山鄉、麥寮鄉）
     for (const [city, data] of Object.entries(LOCATION_MAPPING)) {
       for (const [district, fullName] of Object.entries(data.districts)) {
         if (input.includes(district)) {
@@ -523,10 +523,11 @@ function parseLocation(input) {
       if (cityName) break;
     }
 
-    // 如果沒找到區名，檢查別名
+    // 2. 如果沒找到完整名稱，檢查地區別名（例如：寶山=寶山鄉）
     if (!cityName) {
       for (const [alias, district] of Object.entries(DISTRICT_ALIASES)) {
         if (input.includes(alias)) {
+          // 找出這個地區屬於哪個城市
           for (const [city, data] of Object.entries(LOCATION_MAPPING)) {
             if (data.districts[district]) {
               cityName = city;
@@ -539,9 +540,9 @@ function parseLocation(input) {
       }
     }
 
-    // 如果還是沒找到，檢查縣市名（包括簡稱）
+    // 3. 如果還是沒找到，檢查是否為縣市名稱
     if (!cityName) {
-      // 檢查完整縣市名
+      // 先檢查完整縣市名
       for (const city of Object.keys(LOCATION_MAPPING)) {
         if (input.includes(city)) {
           cityName = city;
@@ -549,25 +550,7 @@ function parseLocation(input) {
         }
       }
 
-      // 如果沒找到完整名，檢查簡稱
-      if (!cityName) {
-        for (const [shortName, fullName] of Object.entries(CITY_SHORT_NAMES)) {
-          if (input.includes(shortName)) {
-            // 如果是需要確認的地區（如嘉義、新竹）
-            if (AMBIGUOUS_CITIES[shortName]) {
-              return {
-                city: null,
-                district: null,
-                error: `抱歉，${shortName}有分${AMBIGUOUS_CITIES[shortName].join('和')}，請問您想查詢哪一個呢？`
-              };
-            }
-            cityName = fullName;
-            break;
-          }
-        }
-      }
-
-      // 最後檢查城市別名
+      // 如果沒找到完整名，檢查縣市別名
       if (!cityName) {
         for (const [alias, city] of Object.entries(CITY_ALIASES)) {
           if (input.includes(alias)) {
@@ -590,6 +573,7 @@ function parseLocation(input) {
       };
     }
 
+    // 如果找到了，回傳結果
     return {
       city: cityName,
       district: districtName
