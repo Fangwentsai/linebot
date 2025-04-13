@@ -32,12 +32,27 @@ const openai = new OpenAI({
 const app = express();
 
 // 天氣預報 API 實現
-async function getWeatherForecast(cityName) {
+async function getWeatherForecast(input) {
   try {
-    const response = await axios.get('https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0032-001', {
+    // 解析輸入的地區名稱
+    const location = parseLocation(input);
+    
+    if (!location.city) {
+      throw new Error(`抱歉，無法識別地區 "${input}"`);
+    }
+
+    const cityData = LOCATION_MAPPING[location.city];
+    if (!cityData) {
+      throw new Error(`抱歉，目前不支援 ${location.city} 的天氣查詢`);
+    }
+
+    // 改用 F-D0047-093 API
+    const response = await axios.get('https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-D0047-093', {
       params: {
         Authorization: process.env.CWB_API_KEY,
-        locationName: cityName
+        locationId: cityData.id,
+        elementName: '溫度,天氣現象,降雨機率,相對濕度,舒適度',
+        format: 'JSON'
       },
       headers: {
         'accept': 'application/json'
@@ -48,44 +63,61 @@ async function getWeatherForecast(cityName) {
       throw new Error('API 請求失敗');
     }
 
-    const location = response.data.records.location[0];
-    const elements = location.weatherElement;
-    
-    // 取得最新的預報資料（第一個時間段）
-    const currentPeriod = {
-      wx: elements.find(e => e.elementName === 'Wx').time[0],      // 天氣現象
-      pop: elements.find(e => e.elementName === 'PoP').time[0],    // 降雨機率
-      minT: elements.find(e => e.elementName === 'MinT').time[0],  // 最低溫度
-      maxT: elements.find(e => e.elementName === 'MaxT').time[0],  // 最高溫度
-      ci: elements.find(e => e.elementName === 'CI').time[0]       // 舒適度
-    };
+    const locations = response.data.records.locations[0].location;
+    let targetLocation;
 
+    // 如果有指定區域，找到對應的區域資料
+    if (location.district) {
+      const fullDistrictName = cityData.districts[location.district];
+      targetLocation = locations.find(loc => loc.locationName === fullDistrictName);
+      if (!targetLocation) {
+        throw new Error(`找不到 ${location.district} 的天氣資料`);
+      }
+    } else {
+      // 如果只有城市名，使用第一個區域的資料
+      targetLocation = locations[0];
+    }
+
+    const weatherElements = targetLocation.weatherElement;
+    
+    // 取得各項天氣要素
+    const temp = weatherElements.find(e => e.elementName === '溫度');
+    const weather = weatherElements.find(e => e.elementName === '天氣現象');
+    const pop = weatherElements.find(e => e.elementName === '降雨機率');
+    const humidity = weatherElements.find(e => e.elementName === '相對濕度');
+    const comfort = weatherElements.find(e => e.elementName === '舒適度');
+
+    // 取得最新的預報資料
+    const currentTime = temp.time[0];
+    
     // 格式化天氣數據
-    const weatherData = {
-      city: location.locationName,
+    return {
+      location: targetLocation.locationName,
       forecast: [{
-        period: `${new Date(currentPeriod.wx.startTime).toLocaleString('zh-TW')} 至 ${new Date(currentPeriod.wx.endTime).toLocaleString('zh-TW')}`,
-        wx: currentPeriod.wx.parameter.parameterName,
-        pop: currentPeriod.pop.parameter.parameterName,
-        minT: currentPeriod.minT.parameter.parameterName,
-        maxT: currentPeriod.maxT.parameter.parameterName,
-        ci: currentPeriod.ci.parameter.parameterName
+        period: `${new Date(currentTime.startTime).toLocaleString('zh-TW')} 至 ${new Date(currentTime.endTime).toLocaleString('zh-TW')}`,
+        temperature: temp.time[0].elementValue[0].value,
+        weather: weather.time[0].elementValue[0].value,
+        pop: pop ? pop.time[0].elementValue[0].value : '無資料',
+        humidity: humidity.time[0].elementValue[0].value,
+        comfort: comfort.time[0].elementValue[0].value
       }]
     };
-
-    return weatherData;
   } catch (error) {
     console.error('獲取天氣預報失敗:', error);
-    
-    if (error.response) {
-      console.error('錯誤狀態碼:', error.response.status);
-      console.error('錯誤信息:', error.response.data);
-    } else if (error.request) {
-      console.error('沒有收到回應');
-    } else {
-      console.error('錯誤:', error.message);
+    if (error.message.includes('找不到') || error.message.includes('無法識別')) {
+      return {
+        error: true,
+        message: `抱歉，我無法提供${input}的天氣資訊。不過，我可以協助查詢其他地區的天氣。
+
+您可以試著這樣提問：
+- 直接說地區名：中和天氣？
+- 完整地區名：中和區天氣
+- 詢問方式：淡水會不會下雨？
+- 簡單提問：新莊氣溫
+
+請告訴我您想查詢的其他地區，我將很樂意幫助您！`
+      };
     }
-    
     throw error;
   }
 }
@@ -123,155 +155,72 @@ app.post('/linebot/webhook', line.middleware(lineConfig), async (req, res) => {
 // 事件處理函數
 async function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text') {
-    return null;
+    return Promise.resolve(null);
   }
 
-  const userMessage = event.message.text;
+  const userInput = event.message.text;
   
-  try {
-    // 檢查是否包含天氣相關關鍵字
-    const hasWeatherKeyword = WEATHER_KEYWORDS.some(keyword => userMessage.includes(keyword));
-    
-    if (hasWeatherKeyword) {
-      // 移除所有天氣關鍵字，獲取地區名稱
-      let query = userMessage;
-      WEATHER_KEYWORDS.forEach(keyword => {
-        query = query.replace(keyword, '');
-      });
-      query = query.replace(/的|是|如何|怎樣|嗎/g, '').trim(); // 移除常見的語氣詞
-
-      let city = query;
-
-      // 檢查是否是地區查詢
-      for (const [district, cityName] of Object.entries(DISTRICT_ALIASES)) {
-        if (query.includes(district)) {
-          city = cityName;
-          query = district; // 保存原始查詢的地區名
-          break;
-        }
-      }
-
-      // 處理台/臺的差異
-      if (city.includes('台')) {
-        city = city.replace('台', '臺');
-      }
-
-      if (!query) {
-        const response = await openai.chat.completions.create({
-          model: GPT_MODEL,
-          messages: [
-            {
-              role: "system",
-              content: `你是一個天氣助手。當用戶詢問天氣但沒有指定地區時，請友善地詢問他們想查詢哪個地區的天氣。
-你可以告訴他們可以直接說地區名稱，例如：
-- 中和天氣如何？
-- 我想知道信義區的天氣
-- 淡水會不會下雨
-- 新莊氣溫`
-            },
-            {
-              role: "user",
-              content: userMessage
-            }
-          ],
-          temperature: 0.7
-        });
-
+  // 檢查是否為天氣相關查詢
+  if (isWeatherQuery(userInput)) {
+    try {
+      const weatherData = await getWeatherForecast(userInput);
+      
+      // 如果有錯誤訊息，直接回傳友善提示
+      if (weatherData.error) {
         return lineClient.replyMessage(event.replyToken, {
           type: 'text',
-          text: response.choices[0].message.content
+          text: weatherData.message
         });
       }
 
-      // 檢查是否為有效的縣市名稱
-      if (!CITIES.includes(city)) {
-        const response = await openai.chat.completions.create({
-          model: GPT_MODEL,
-          messages: [
-            {
-              role: "system",
-              content: `你是一個天氣助手。用戶想查詢「${query}」的天氣，但這個地區不在支援範圍內。
-請友善地告訴他可以查詢的地區範圍，並舉例說明幾種提問方式：
-- 直接說地區名：中和天氣？
-- 完整地區名：中和區天氣
-- 詢問方式：淡水會不會下雨？
-- 簡單提問：新莊氣溫`
-            },
-            {
-              role: "user",
-              content: userMessage
-            }
-          ],
-          temperature: 0.7
-        });
-
-        return lineClient.replyMessage(event.replyToken, {
-          type: 'text',
-          text: response.choices[0].message.content
-        });
-      }
-
-      // 獲取天氣數據
-      const weatherData = await getWeatherForecast(city);
-      
-      // 在天氣數據中添加查詢的地區信息
-      if (query !== city) {
-        weatherData.district = query;
-      }
-      
-      // 使用 GPT 生成更自然的天氣描述
-      const response = await openai.chat.completions.create({
-        model: GPT_MODEL,
-        messages: [
-          {
-            role: "system",
-            content: "你是一個天氣播報員。請用自然且友善的語氣描述天氣預報信息。" + 
-                    (weatherData.district ? `這是${weatherData.district}的天氣預報，位於${weatherData.city}。` : "") +
-                    "請加入一些生活建議，口語化一點，就像在跟朋友聊天一樣。"
-          },
-          {
-            role: "user",
-            content: JSON.stringify(weatherData)
-          }
-        ],
-        temperature: 0.7
-      });
-
+      // 正常回傳天氣資訊
+      const forecast = weatherData.forecast[0];
       return lineClient.replyMessage(event.replyToken, {
         type: 'text',
-        text: response.choices[0].message.content
+        text: `${weatherData.location}天氣預報：\n` +
+              `時間：${forecast.period}\n` +
+              `天氣狀況：${forecast.weather}\n` +
+              `溫度：${forecast.temperature}°C\n` +
+              `降雨機率：${forecast.pop}%\n` +
+              `相對濕度：${forecast.humidity}%\n` +
+              `舒適度：${forecast.comfort}`
+      });
+    } catch (error) {
+      console.error('處理天氣查詢時發生錯誤:', error);
+      return lineClient.replyMessage(event.replyToken, {
+        type: 'text',
+        text: '抱歉，取得天氣資訊時發生錯誤，請稍後再試。'
       });
     }
-
-    // 一般對話處理
-    const response = await openai.chat.completions.create({
-      model: GPT_MODEL,
-      messages: [
-        {
-          role: "system",
-          content: `你是一個智能助手，可以回答問題並提供幫助。如果用戶想查詢天氣，請建議他們直接輸入城市名稱加上「天氣」，例如「台北天氣」。
-可查詢的城市列表：${CITIES.join('、')}`
-        },
-        {
-          role: "user",
-          content: userMessage
-        }
-      ],
-      temperature: 0.7
-    });
-
-    return lineClient.replyMessage(event.replyToken, {
-      type: 'text',
-      text: response.choices[0].message.content
-    });
-    
-  } catch (error) {
-    console.error('處理訊息失敗:', error);
-    return lineClient.replyMessage(event.replyToken, {
-      type: 'text',
-      text: `抱歉，獲取天氣信息時發生錯誤：${error.message}`
-    });
   }
+  
+  // 一般對話處理
+  const response = await openai.chat.completions.create({
+    model: GPT_MODEL,
+    messages: [
+      {
+        role: "system",
+        content: `你是一個智能助手，可以回答問題並提供幫助。如果用戶想查詢天氣，請建議他們直接輸入城市名稱加上「天氣」，例如「台北天氣」。
+可查詢的城市列表：${CITIES.join('、')}`
+      },
+      {
+        role: "user",
+        content: userInput
+      }
+    ],
+    temperature: 0.7
+  });
+
+  return lineClient.replyMessage(event.replyToken, {
+    type: 'text',
+    text: response.choices[0].message.content
+  });
+}
+
+// 判斷是否為天氣查詢的函數
+function isWeatherQuery(text) {
+  const weatherKeywords = ['天氣', '氣溫', '溫度', '下雨', '降雨', '濕度', '會不會雨'];
+  return weatherKeywords.some(keyword => text.includes(keyword));
 }
 
 // 錯誤處理中間件
