@@ -308,10 +308,3 @@ function parseLocation(input) {
     district: districtName
   };
 }
-
-// 更新 DISTRICT_ALIASES，加入更多地區別名
-const DISTRICT_ALIASES = {
-  // ... 原有的別名 ...
-  '寶山': '寶山鄉',  // 新竹縣
-  '寶山鄉': '寶山鄉'
-};
