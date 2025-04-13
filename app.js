@@ -309,19 +309,37 @@ app.get('/linebot/webhook', (req, res) => {
 
 // Webhook路由
 app.post('/linebot/webhook', line.middleware(lineConfig), async (req, res) => {
-  res.status(200).end();
-  
   try {
     const events = req.body.events;
-    events.forEach(async (event) => {
+    // 先回應 LINE Platform
+    res.status(200).end();
+    
+    // 非同步處理事件
+    for (const event of events) {
       try {
         await handleEvent(event);
       } catch (err) {
         console.error('事件處理錯誤:', err);
       }
-    });
+    }
   } catch (err) {
     console.error('Webhook處理錯誤:', err);
+    // 即使發生錯誤，也要回應 200
+    if (!res.headersSent) {
+      res.status(200).end();
+    }
+  }
+});
+
+// 確保 Express 可以解析 JSON
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// 錯誤處理中間件
+app.use((err, req, res, next) => {
+  console.error('Express 錯誤:', err);
+  if (!res.headersSent) {
+    res.status(200).json({ status: 'error handled' });
   }
 });
 
@@ -396,12 +414,6 @@ function isWeatherQuery(input) {
 
   return weatherKeywords.some(keyword => input.includes(keyword));
 }
-
-// 錯誤處理中間件
-app.use((err, req, res, next) => {
-  console.error('Error:', err);
-  res.status(500).json({ error: 'Internal Server Error' });
-});
 
 // 啟動服務器
 const port = process.env.PORT || 3000;
