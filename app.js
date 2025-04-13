@@ -79,10 +79,10 @@ async function getWeatherForecast(locationInfo) {
     console.log('API 響應結構:', {
       success: response.data.success,
       hasRecords: !!response.data.records,
-      hasLocations: !!response.data.records?.locations,
-      locationsLength: response.data.records?.locations?.length,
-      firstLocation: response.data.records?.locations?.[0],
-      locationData: response.data.records?.locations?.[0]?.location
+      hasLocations: !!response.data.records?.Locations,
+      locationsLength: response.data.records?.Locations?.length,
+      firstLocation: response.data.records?.Locations?.[0],
+      locationData: response.data.records?.Locations?.[0]?.location
     });
 
     // 檢查 API 響應
@@ -92,12 +92,12 @@ async function getWeatherForecast(locationInfo) {
     }
 
     // 檢查資料結構
-    if (!response.data.records?.locations?.[0]?.location) {
+    if (!response.data.records?.Locations?.[0]?.location) {
       console.error('無效的資料結構:', response.data);
       throw new Error('無效的天氣數據格式');
     }
 
-    const locations = response.data.records.locations[0].location;
+    const locations = response.data.records.Locations[0].location;
     console.log('可用的地點:', locations.map(loc => loc.locationName));
 
     let targetLocation;
