@@ -239,8 +239,11 @@ ${data.locationName}天氣預報：
     const tempType = temp < 20 ? 'cold' : temp > 28 ? 'hot' : 'mild';
     const weatherType = data.description.includes('雨') ? 'rainy' : 
                        data.description.includes('晴') ? 'sunny' : 'cloudy';
+    const hour = new Date(data.startTime).getHours();
+    const timeType = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
 
-    return `${WEATHER_GREETINGS.temperature[tempType].greetings[Math.floor(Math.random() * 4)]}
+    return `${WEATHER_GREETINGS.timeGreetings[timeType][Math.floor(Math.random() * 4)]}
+${WEATHER_GREETINGS.temperature[tempType].greetings[Math.floor(Math.random() * 4)]}
 
 ${data.locationName}今天的天氣是：
 ${WEATHER_GREETINGS.weather[weatherType].descriptions[Math.floor(Math.random() * 4)]}
@@ -261,8 +264,11 @@ ${WEATHER_GREETINGS.weather[weatherType].emoji} 天氣：${data.description}
     const tempType = temp < 20 ? 'cold' : temp > 28 ? 'hot' : 'mild';
     const weatherType = data.description.includes('雨') ? 'rainy' : 
                        data.description.includes('晴') ? 'sunny' : 'cloudy';
+    const hour = new Date(data.startTime).getHours();
+    const timeType = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
 
-    return `${WEATHER_GREETINGS.temperature[tempType].greetings[Math.floor(Math.random() * 4)]}
+    return `${WEATHER_GREETINGS.timeGreetings[timeType][Math.floor(Math.random() * 4)]}
+${WEATHER_GREETINGS.temperature[tempType].greetings[Math.floor(Math.random() * 4)]}
 
 ${WEATHER_GREETINGS.weather[weatherType].emoji} ${data.locationName}天氣懶人包 ${WEATHER_GREETINGS.weather[weatherType].emoji}
 
