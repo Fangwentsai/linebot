@@ -160,77 +160,68 @@ async function handleEvent(event) {
 
   const userInput = event.message.text;
   
-  // 檢查是否為天氣相關查詢
-  if (isWeatherQuery(userInput)) {
-    try {
-      const weatherData = await getWeatherForecast(userInput);
+  try {
+    // 檢查是否是天氣相關查詢
+    if (isWeatherQuery(userInput)) {
+      const locationInfo = parseLocation(userInput);
       
-      // 如果有錯誤訊息，直接回傳友善提示
-      if (weatherData.error) {
+      if (locationInfo.error) {
+        // 如果有錯誤訊息，直接回傳給使用者
         return lineClient.replyMessage(event.replyToken, {
           type: 'text',
-          text: weatherData.message
+          text: locationInfo.error
         });
       }
 
-      // 正常回傳天氣資訊
-      const forecast = weatherData.forecast[0];
+      const weatherData = await getWeatherForecast(locationInfo);
       return lineClient.replyMessage(event.replyToken, {
         type: 'text',
-        text: `${weatherData.location}天氣預報：\n` +
-              `時間：${forecast.period}\n` +
-              `天氣狀況：${forecast.weather}\n` +
-              `溫度：${forecast.temperature}°C\n` +
-              `降雨機率：${forecast.pop}%\n` +
-              `相對濕度：${forecast.humidity}%\n` +
-              `舒適度：${forecast.comfort}`
-      });
-    } catch (error) {
-      // 改進錯誤訊息
-      const friendlyMessage = `抱歉，我無法提供${userInput}的天氣資訊。
-
-您可以試著這樣問：
-- 縣市名：新竹縣天氣
-- 地區名：寶山鄉天氣
-- 簡單問：中和下雨嗎
-- 直接問：板橋氣溫
-
-請問您想查詢哪個地區的天氣呢？`;
-
-      return lineClient.replyMessage(event.replyToken, {
-        type: 'text',
-        text: friendlyMessage
+        text: weatherData
       });
     }
-  }
-  
-  // 一般對話處理
-  const response = await openai.chat.completions.create({
-    model: GPT_MODEL,
-    messages: [
-      {
-        role: "system",
-        content: `你是一個智能助手，可以回答問題並提供幫助。如果用戶想查詢天氣，請建議他們直接輸入城市名稱加上「天氣」，例如「台北天氣」。
+    
+    // 一般對話處理
+    const response = await openai.chat.completions.create({
+      model: GPT_MODEL,
+      messages: [
+        {
+          role: "system",
+          content: `你是一個智能助手，可以回答問題並提供幫助。如果用戶想查詢天氣，請建議他們直接輸入城市名稱加上「天氣」，例如「台北天氣」。
 可查詢的城市列表：${CITIES.join('、')}`
-      },
-      {
-        role: "user",
-        content: userInput
-      }
-    ],
-    temperature: 0.7
-  });
+        },
+        {
+          role: "user",
+          content: userInput
+        }
+      ],
+      temperature: 0.7
+    });
 
-  return lineClient.replyMessage(event.replyToken, {
-    type: 'text',
-    text: response.choices[0].message.content
-  });
+    return lineClient.replyMessage(event.replyToken, {
+      type: 'text',
+      text: response.choices[0].message.content
+    });
+  } catch (error) {
+    console.error('Error:', error);
+    return lineClient.replyMessage(event.replyToken, {
+      type: 'text',
+      text: '抱歉啦！系統有點小問題，請再試一次，或是換個問法問我吧！😅'
+    });
+  }
 }
 
 // 判斷是否為天氣查詢的函數
-function isWeatherQuery(text) {
-  const weatherKeywords = ['天氣', '氣溫', '溫度', '下雨', '降雨', '濕度', '會不會雨', '天氣如何', '會下雨'];
-  return weatherKeywords.some(keyword => text.includes(keyword));
+function isWeatherQuery(input) {
+  const weatherKeywords = [
+    '天氣', '下雨', '氣溫', '溫度', '濕度', '降雨', 
+    '會不會雨', '天氣如何', '天氣怎樣',
+    // 增加更多口語化表達
+    '天氣ㄋ', '天氣ㄇ', '會下雨ㄇ', '會下雨嗎',
+    '天氣好嗎', '天氣好ㄇ', '天氣咧', '天氣勒',
+    '下雨ㄇ', '下雨嗎', '會不會下', '會不會降雨'
+  ];
+
+  return weatherKeywords.some(keyword => input.includes(keyword));
 }
 
 // 錯誤處理中間件
@@ -247,9 +238,37 @@ app.listen(port, () => {
 
 // 地區名稱處理函數
 function parseLocation(input) {
-  // 移除所有空格和一些常見的問句詞
-  input = input.replace(/嗨|你好|請問|問一下|想知道|可以告訴我|天氣|氣溫|溫度|下雨|降雨|濕度|會不會雨|如何|嗎/g, '').trim();
-  
+  // 擴充移除的詞彙，包含網路用語和口語表達
+  const removeWords = [
+    // 一般問句詞
+    '嗨', '你好', '請問', '問一下', '想知道', '可以告訴我',
+    '天氣', '氣溫', '溫度', '下雨', '降雨', '濕度', '會不會雨', '如何', '嗎',
+    // 網路用語和口語
+    '欸', '欸欸', '誒', '誒誒', '欸幫', '幫我', '幫查', '查查', '查個',
+    '好ㄇ', '好嗎', '好不好', '如何', '怎樣', '咧', '勒', '啦',
+    '拜託', '感恩', '感謝', 'thx', '謝謝', '感恩der', '感恩低',
+    '現在', '等等', '待會', '等一下',
+    '我想', '想要', '要看', '看看', '幫忙', '拜託', 
+    '今天', '明天', '後天', '早上', '中午', '晚上',
+    // 語氣詞
+    'der', 'ㄉ', 'ㄋ', 'ㄇ', '喔', '唷', '耶', '呢', '啊', '欸', '誒',
+    // 表情符號（如果有的話也會被移除）
+    '😊', '😂', '🤔', '👍', '🙏'
+  ];
+
+  // 建立正則表達式，移除所有指定詞彙
+  const removePattern = new RegExp(removeWords.join('|'), 'g');
+  input = input.replace(removePattern, '').trim();
+
+  // 如果清理後的輸入為空，回傳錯誤訊息
+  if (!input) {
+    return {
+      city: null,
+      district: null,
+      error: '請告訴我您想查詢哪個地區的天氣喔！例如：台北天氣、中和區天氣'
+    };
+  }
+
   let cityName = null;
   let districtName = null;
 
@@ -301,6 +320,18 @@ function parseLocation(input) {
         }
       }
     }
+  }
+
+  // 如果都沒找到對應的地區，給出更友善的提示
+  if (!cityName && !districtName) {
+    return {
+      city: null,
+      district: null,
+      error: `抱歉，我看不懂「${input}」是哪個地方耶！可以試試：
+1. 直接說地名：台北、中和
+2. 完整區名：信義區、板橋區
+3. 簡單問句：中和天氣、北投區天氣`
+    };
   }
 
   return {
