@@ -111,6 +111,180 @@ async function getWeatherForecast(locationInfo) {
 // 定義關鍵字列表
 const WEATHER_KEYWORDS = ['天氣', '氣溫', '下雨', '會不會雨', '天氣如何', '氣象'];
 
+// 定義天氣相關的問候語和建議
+const WEATHER_GREETINGS = {
+  // 依照溫度範圍
+  temperature: {
+    cold: {
+      greetings: [
+        "今天真的有夠冷der～要注意保暖喔！🧣",
+        "天氣涼涼的，記得多穿一點～",
+        "寒流來襲，要穿暖暖的出門！",
+        "這麼冷的天，要好好照顧自己哦 🤗"
+      ],
+      tips: [
+        "建議穿上厚外套再出門",
+        "要記得戴圍巾手套喔",
+        "可以帶個暖暖包在身上",
+        "多喝點熱飲暖暖身子"
+      ]
+    },
+    mild: {
+      greetings: [
+        "今天天氣舒服宜人呢！",
+        "這種天氣最適合出門玩啦～",
+        "天氣真不錯，心情也好好！",
+        "這溫度真的超級舒服的～"
+      ],
+      tips: [
+        "很適合出門走走呢",
+        "可以約朋友出去踏青",
+        "是個適合運動的好天氣",
+        "記得多呼吸新鮮空氣"
+      ]
+    },
+    hot: {
+      greetings: [
+        "哇～今天熱死了啦！☀️",
+        "這天氣熱到快融化了啦～",
+        "今天太陽好大，要小心中暑喔",
+        "熱熱的天氣要多補充水分～"
+      ],
+      tips: [
+        "記得帶把傘遮陽",
+        "多喝水避免中暑",
+        "防曬工作要做好",
+        "可以帶個小電扇出門"
+      ]
+    }
+  },
+  
+  // 依照天氣現象
+  weather: {
+    sunny: {
+      emoji: "☀️",
+      descriptions: [
+        "陽光普照的好天氣",
+        "晴朗舒適的一天",
+        "陽光燦爛真美好",
+        "充滿活力的晴天"
+      ]
+    },
+    cloudy: {
+      emoji: "☁️",
+      descriptions: [
+        "悠閒的多雲天",
+        "雲朵飄飄的天氣",
+        "涼爽舒適的雲天",
+        "溫和的多雲天氣"
+      ]
+    },
+    rainy: {
+      emoji: "🌧",
+      descriptions: [
+        "下雨天也要保持好心情",
+        "雨天記得帶把傘喔",
+        "濕濕的雨天要小心",
+        "雨天路滑要注意安全"
+      ]
+    }
+  },
+  
+  // 時段問候
+  timeGreetings: {
+    morning: [
+      "早安啊！來看看今天的天氣～",
+      "早起的鳥兒有蟲吃，來查查天氣吧！",
+      "今天又是嶄新的一天，天氣如何呢？",
+      "早安！先看看天氣再出門吧～"
+    ],
+    afternoon: [
+      "午安～看看下午的天氣預報！",
+      "吃飽飯了嗎？來看看天氣預報～",
+      "下午好！天氣報報來囉！",
+      "午安安～帶你看看天氣狀況！"
+    ],
+    evening: [
+      "晚安～來看看明天要準備什麼衣服吧！",
+      "晚上好！明天的天氣會如何呢？",
+      "夜晚了～來查查明天的天氣吧！",
+      "晚安囉！先看看明天的天氣預報～"
+    ]
+  }
+};
+
+// 修改回覆模板
+const RESPONSE_TEMPLATES = {
+  formal: (data) => {
+    const temp = parseInt(data.maxTemp);
+    const tempType = temp < 20 ? 'cold' : temp > 28 ? 'hot' : 'mild';
+    const weatherType = data.description.includes('雨') ? 'rainy' : 
+                       data.description.includes('晴') ? 'sunny' : 'cloudy';
+    const hour = new Date(data.startTime).getHours();
+    const timeType = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
+
+    return `親愛的朋友您好：
+
+${WEATHER_GREETINGS.timeGreetings[timeType][Math.floor(Math.random() * 4)]}
+
+${data.locationName}天氣預報：
+預報時段：${data.startTime} 至 ${data.endTime}
+氣溫範圍：${data.minTemp}°C 至 ${data.maxTemp}°C
+天氣狀況：${WEATHER_GREETINGS.weather[weatherType].emoji} ${data.description}
+降雨機率：${data.rainProb}%
+體感溫度：${data.comfort}
+
+貼心提醒：${WEATHER_GREETINGS.temperature[tempType].tips[Math.floor(Math.random() * 4)]}
+祝您有個愉快的一天！
+
+資料來源：中央氣象署`;
+  },
+
+  casual: (data) => {
+    const temp = parseInt(data.maxTemp);
+    const tempType = temp < 20 ? 'cold' : temp > 28 ? 'hot' : 'mild';
+    const weatherType = data.description.includes('雨') ? 'rainy' : 
+                       data.description.includes('晴') ? 'sunny' : 'cloudy';
+
+    return `${WEATHER_GREETINGS.temperature[tempType].greetings[Math.floor(Math.random() * 4)]}
+
+${data.locationName}今天的天氣是：
+${WEATHER_GREETINGS.weather[weatherType].descriptions[Math.floor(Math.random() * 4)]}
+
+🕐 時間：${data.startTime.split(' ')[1]} - ${data.endTime.split(' ')[1]}
+🌡 溫度：${data.minTemp}°C 到 ${data.maxTemp}°C
+${WEATHER_GREETINGS.weather[weatherType].emoji} 天氣：${data.description}
+☔️ 降雨機率：${data.rainProb}% ${parseInt(data.rainProb) > 30 ? '（記得帶傘喔！）' : '（應該不會下雨啦）'}
+😊 體感：${data.comfort}
+
+小提醒：${WEATHER_GREETINGS.temperature[tempType].tips[Math.floor(Math.random() * 4)]}
+
+⚡️ 資料來源：中央氣象署`;
+  },
+
+  trendy: (data) => {
+    const temp = parseInt(data.maxTemp);
+    const tempType = temp < 20 ? 'cold' : temp > 28 ? 'hot' : 'mild';
+    const weatherType = data.description.includes('雨') ? 'rainy' : 
+                       data.description.includes('晴') ? 'sunny' : 'cloudy';
+
+    return `${WEATHER_GREETINGS.temperature[tempType].greetings[Math.floor(Math.random() * 4)]}
+
+${WEATHER_GREETINGS.weather[weatherType].emoji} ${data.locationName}天氣懶人包 ${WEATHER_GREETINGS.weather[weatherType].emoji}
+
+⏰ ${data.startTime.split(' ')[1].slice(0, 5)} - ${data.endTime.split(' ')[1].slice(0, 5)}
+🌡 溫度：${data.minTemp}-${data.maxTemp}°C
+${WEATHER_GREETINGS.weather[weatherType].emoji} 天氣：${data.description}
+☔️ 降雨機率：${data.rainProb}% ${parseInt(data.rainProb) > 30 ? '（快拿傘啦！）' : '（暫時不用擔心啦）'}
+😊 體感：${data.comfort}
+
+小建議：${WEATHER_GREETINGS.temperature[tempType].tips[Math.floor(Math.random() * 4)]}
+
+#${data.locationName}天氣 #${data.description} #${data.comfort}
+⚡️ Powered by 中央氣象署`;
+  }
+};
+
 // 健康檢查路由
 app.get('/', (req, res) => {
   res.status(200).json({ status: 'ok' });
