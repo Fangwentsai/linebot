@@ -119,6 +119,15 @@ async function getWeatherForecast(locationInfo) {
 const WEATHER_KEYWORDS = ['天氣', '氣溫', '下雨', '會不會雨', '天氣如何', '氣象'];
 
 // 定義天氣相關的問候語和建議
+const getTimeType = (hour) => {
+  if (hour >= 5 && hour < 11) return 'morning';     // 早上 5:00-10:59
+  if (hour >= 11 && hour < 14) return 'noon';       // 中午 11:00-13:59
+  if (hour >= 14 && hour < 18) return 'afternoon';  // 下午 14:00-17:59
+  if (hour >= 18 && hour < 22) return 'evening';    // 晚上 18:00-21:59
+  return 'night';                                   // 深夜/凌晨 22:00-4:59
+};
+
+// 更新問候語
 const WEATHER_GREETINGS = {
   // 依照溫度範圍
   temperature: {
@@ -205,17 +214,29 @@ const WEATHER_GREETINGS = {
       "今天又是嶄新的一天，天氣如何呢？",
       "早安！先看看天氣再出門吧～"
     ],
+    noon: [
+      "午安～吃飽飯了嗎？",
+      "中午好！來看看天氣預報～",
+      "用餐時間到！順便查查天氣～",
+      "午餐時間，天氣報報來囉！"
+    ],
     afternoon: [
-      "午安～看看下午的天氣預報！",
-      "吃飽飯了嗎？來看看天氣預報～",
-      "下午好！天氣報報來囉！",
-      "午安安～帶你看看天氣狀況！"
+      "下午好！精神還好嗎？",
+      "來杯下午茶，順便看看天氣～",
+      "下午茶時光，天氣報報！",
+      "下午好！帶你看看天氣狀況！"
     ],
     evening: [
+      "晚上好！今天過得如何？",
+      "傍晚了～來看看天氣預報！",
+      "快到晚餐時間了，天氣狀況是～",
+      "美好的夜晚，天氣報報來囉！"
+    ],
+    night: [
+      "夜深了～要記得早點休息喔！",
       "晚安～來看看明天要準備什麼衣服吧！",
-      "晚上好！明天的天氣會如何呢？",
-      "夜晚了～來查查明天的天氣吧！",
-      "晚安囉！先看看明天的天氣預報～"
+      "該準備睡覺了，先看看明天的天氣～",
+      "夜深人靜，明天的天氣會如何呢？"
     ]
   }
 };
@@ -228,7 +249,7 @@ const RESPONSE_TEMPLATES = {
     const weatherType = data.description.includes('雨') ? 'rainy' : 
                        data.description.includes('晴') ? 'sunny' : 'cloudy';
     const hour = new Date(data.startTime).getHours();
-    const timeType = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
+    const timeType = getTimeType(hour);
 
     return `親愛的朋友您好：
 
@@ -253,7 +274,7 @@ ${data.locationName}天氣預報：
     const weatherType = data.description.includes('雨') ? 'rainy' : 
                        data.description.includes('晴') ? 'sunny' : 'cloudy';
     const hour = new Date(data.startTime).getHours();
-    const timeType = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
+    const timeType = getTimeType(hour);
 
     return `${WEATHER_GREETINGS.timeGreetings[timeType][Math.floor(Math.random() * 4)]}
 ${WEATHER_GREETINGS.temperature[tempType].greetings[Math.floor(Math.random() * 4)]}
@@ -278,7 +299,7 @@ ${WEATHER_GREETINGS.weather[weatherType].emoji} 天氣：${data.description}
     const weatherType = data.description.includes('雨') ? 'rainy' : 
                        data.description.includes('晴') ? 'sunny' : 'cloudy';
     const hour = new Date(data.startTime).getHours();
-    const timeType = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
+    const timeType = getTimeType(hour);
 
     return `${WEATHER_GREETINGS.timeGreetings[timeType][Math.floor(Math.random() * 4)]}
 ${WEATHER_GREETINGS.temperature[tempType].greetings[Math.floor(Math.random() * 4)]}
