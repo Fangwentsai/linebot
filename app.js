@@ -38,100 +38,47 @@ async function getWeatherForecast(locationInfo) {
       throw new Error('無法識別地區');
     }
 
-    const cityData = LOCATION_MAPPING[locationInfo.city];
-    if (!cityData) {
-      throw new Error(`抱歉，目前不支援 ${locationInfo.city} 的天氣查詢`);
-    }
-
     console.log('開始查詢天氣:', {
       city: locationInfo.city,
-      district: locationInfo.district,
-      id: cityData.id
+      district: locationInfo.district
     });
 
     // API 請求
-    const response = await axios.get('https://opendata.cwa.gov.tw/api/v1/rest/datastore/' + cityData.id, {
+    const response = await axios.get('https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0032-001', {
       params: {
         Authorization: process.env.CWB_API_KEY,
-        format: 'JSON',
-        locationName: locationInfo.district ? cityData.districts[locationInfo.district] : '',
-        elementName: 'MinT,MaxT,PoP12h,Wx,RH,CI',
-        sort: 'time'
+        locationName: locationInfo.city,  // 這個 API 只需要縣市名稱
+        format: 'JSON'
       }
     });
 
-    // 輸出完整響應以進行調試
-    console.log('API 響應結構:', {
-      success: response.data?.success,
-      hasRecords: !!response.data?.records,
-      hasLocations: !!response.data?.records?.locations,
-      locationsData: response.data?.records?.locations
-    });
+    console.log('API 響應:', JSON.stringify(response.data, null, 2));
 
     // 檢查響應
     if (!response.data?.success || response.data.success !== 'true') {
       throw new Error('API 請求失敗');
     }
 
-    // 檢查資料結構
-    if (!response.data?.records?.locations) {
-      console.error('無效的資料結構:', response.data);
-      throw new Error('資料結構錯誤');
-    }
-
-    // 獲取地點資料
-    const locationsData = response.data.records.locations;
-    console.log('位置資料:', {
-      count: locationsData.length,
-      firstLocation: locationsData[0]
-    });
-
-    if (!Array.isArray(locationsData) || !locationsData[0]?.location) {
-      throw new Error('無效的位置資料格式');
-    }
-
-    const locations = locationsData[0].location;
-    console.log('可用地點:', locations.map(loc => loc.locationName));
-
-    // 找到目標地區
-    let targetLocation;
-    if (locationInfo.district) {
-      const fullDistrictName = cityData.districts[locationInfo.district];
-      console.log('搜尋地區:', {
-        searching: fullDistrictName,
-        available: locations.map(loc => loc.locationName)
-      });
-      targetLocation = locations.find(loc => loc.locationName === fullDistrictName);
-    } else {
-      targetLocation = locations[0];
-    }
+    // 獲取天氣資料
+    const locations = response.data.records.location;
+    const targetLocation = locations.find(loc => loc.locationName === locationInfo.city);
 
     if (!targetLocation) {
-      throw new Error(`找不到 ${locationInfo.district || locationInfo.city} 的天氣資料`);
+      throw new Error(`找不到 ${locationInfo.city} 的天氣資料`);
     }
 
-    console.log('目標地區資料:', {
-      name: targetLocation.locationName,
-      elements: targetLocation.weatherElement.map(e => e.elementName)
-    });
-
-    // 解析天氣資料
+    // 解析天氣要素
+    const weatherElements = targetLocation.weatherElement;
     const weather = {
-      minTemp: targetLocation.weatherElement.find(e => e.elementName === 'MinT')?.time[0]?.elementValue[0]?.value,
-      maxTemp: targetLocation.weatherElement.find(e => e.elementName === 'MaxT')?.time[0]?.elementValue[0]?.value,
-      description: targetLocation.weatherElement.find(e => e.elementName === 'Wx')?.time[0]?.elementValue[0]?.value,
-      rainProb: targetLocation.weatherElement.find(e => e.elementName === 'PoP12h')?.time[0]?.elementValue[0]?.value,
-      humidity: targetLocation.weatherElement.find(e => e.elementName === 'RH')?.time[0]?.elementValue[0]?.value,
-      comfort: targetLocation.weatherElement.find(e => e.elementName === 'CI')?.time[0]?.elementValue[0]?.value
+      description: weatherElements.find(e => e.elementName === 'Wx')?.time[0]?.parameter?.parameterName,
+      rainProb: weatherElements.find(e => e.elementName === 'PoP')?.time[0]?.parameter?.parameterName,
+      minTemp: weatherElements.find(e => e.elementName === 'MinT')?.time[0]?.parameter?.parameterName,
+      maxTemp: weatherElements.find(e => e.elementName === 'MaxT')?.time[0]?.parameter?.parameterName,
+      comfort: weatherElements.find(e => e.elementName === 'CI')?.time[0]?.parameter?.parameterName
     };
 
-    console.log('解析到的天氣資料:', weather);
-
     // 取得時間資訊
-    const timeInfo = targetLocation.weatherElement[0].time[0];
-    if (!timeInfo?.startTime || !timeInfo?.endTime) {
-      throw new Error('無法獲取時間資訊');
-    }
+    const timeInfo = weatherElements[0].time[0];
     
     // 格式化回應
     const locationName = locationInfo.district ? 
@@ -139,12 +86,11 @@ async function getWeatherForecast(locationInfo) {
       locationInfo.city;
 
     return `${locationName}天氣預報：
-時間：${new Date(timeInfo.startTime).toLocaleString('zh-TW')} 至 ${new Date(timeInfo.endTime).toLocaleString('zh-TW')}
+時間：${timeInfo.startTime} 至 ${timeInfo.endTime}
 溫度：${weather.minTemp}°C ~ ${weather.maxTemp}°C
 天氣：${weather.description}
-降雨機率：${weather.rainProb ? weather.rainProb + '%' : '無資料'}
-相對濕度：${weather.humidity ? weather.humidity + '%' : '無資料'}
-舒適度：${weather.comfort || '無資料'}`;
+降雨機率：${weather.rainProb}%
+舒適度：${weather.comfort}`;
 
   } catch (error) {
     console.error('天氣查詢失敗:', error);
@@ -156,9 +102,9 @@ async function getWeatherForecast(locationInfo) {
     }
     return `抱歉，無法取得${locationInfo.district || locationInfo.city}的天氣資訊。
 您可以試試：
-- 直接查詢：台北天氣
-- 查詢區域：中和區天氣
-- 其他地區：信義區天氣`;
+- 台北市天氣
+- 新北市天氣
+- 桃園市天氣`;
   }
 }
 
