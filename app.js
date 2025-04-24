@@ -8,13 +8,35 @@ const axios = require('axios');
 
 // 初始化Firebase
 const admin = require('firebase-admin');
-const serviceAccount = require('./firebase-credentials.json');
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
-});
+// 嘗試從環境變量初始化Firebase，如果失敗則從文件讀取
+let firebaseInitialized = false;
+try {
+  // 首先嘗試從環境變量讀取Firebase憑證
+  if (process.env.FIREBASE_CREDENTIALS) {
+    console.log('從環境變量初始化Firebase');
+    const serviceAccount = JSON.parse(process.env.FIREBASE_CREDENTIALS);
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount)
+    });
+    firebaseInitialized = true;
+  } else {
+    // 嘗試從文件讀取憑證
+    console.log('嘗試從文件初始化Firebase');
+    const serviceAccount = require('./firebase-credentials.json');
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount)
+    });
+    firebaseInitialized = true;
+  }
+  console.log('Firebase初始化成功');
+} catch (error) {
+  console.error('Firebase初始化失敗:', error.message);
+  console.log('將使用内存存儲會話數據');
+}
 
-const db = admin.firestore();
+// 如果Firebase初始化成功，使用Firestore；否則使用内存存儲
+const db = firebaseInitialized ? admin.firestore() : null;
 
 // 定義常量
 const GPT_MODEL = "gpt-4o-mini";
@@ -417,63 +439,103 @@ async function handleEvent(event) {
 
 // 获取用户会话
 async function getUserSession(userId) {
-  try {
-    const doc = await db.collection('sessions').doc(userId).get();
-    if (doc.exists) {
-      return doc.data();
-    } else {
-      // 新用户，创建默认会话
-      const defaultSession = {
-        messages: [
-          { role: "system", content: getSystemPrompt() }
-        ],
-        lastActive: admin.firestore.FieldValue.serverTimestamp()
+  // 如果Firebase初始化成功，使用Firestore
+  if (firebaseInitialized && db) {
+    try {
+      const doc = await db.collection('sessions').doc(userId).get();
+      if (doc.exists) {
+        return doc.data();
+      } else {
+        // 新用户，创建默认会话
+        const defaultSession = {
+          messages: [
+            { role: "system", content: getSystemPrompt() }
+          ],
+          lastActive: admin.firestore.FieldValue.serverTimestamp()
+        };
+        await db.collection('sessions').doc(userId).set(defaultSession);
+        return defaultSession;
+      }
+    } catch (error) {
+      console.error('获取用户会话失败:', error);
+      // 返回默认会话，避免错误影响用户体验
+      return {
+        messages: [{ role: "system", content: getSystemPrompt() }],
+        lastActive: new Date()
       };
-      await db.collection('sessions').doc(userId).set(defaultSession);
-      return defaultSession;
     }
-  } catch (error) {
-    console.error('获取用户会话失败:', error);
-    // 返回默认会话，避免错误影响用户体验
-    return {
-      messages: [{ role: "system", content: getSystemPrompt() }],
-      lastActive: new Date()
-    };
+  } else {
+    // 使用内存存储
+    if (!userSessions[userId]) {
+      userSessions[userId] = {
+        messages: [{ role: "system", content: getSystemPrompt() }],
+        lastActive: new Date()
+      };
+    }
+    return userSessions[userId];
   }
 }
 
 // 更新用户会话
 async function updateUserSession(userId, messages) {
-  try {
-    await db.collection('sessions').doc(userId).update({
-      messages: messages,
-      lastActive: admin.firestore.FieldValue.serverTimestamp()
-    });
-  } catch (error) {
-    console.error('更新用户会话失败:', error);
+  // 如果Firebase初始化成功，使用Firestore
+  if (firebaseInitialized && db) {
+    try {
+      await db.collection('sessions').doc(userId).update({
+        messages: messages,
+        lastActive: admin.firestore.FieldValue.serverTimestamp()
+      });
+    } catch (error) {
+      console.error('更新用户会话失败:', error);
+    }
+  } else {
+    // 使用内存存储
+    if (userSessions[userId]) {
+      userSessions[userId].messages = messages;
+      userSessions[userId].lastActive = new Date();
+    }
   }
 }
 
 // 清理长时间不活跃的会话
 async function cleanupOldSessions() {
-  try {
-    // 计算30天前的时间戳
+  // 如果Firebase初始化成功，使用Firestore
+  if (firebaseInitialized && db) {
+    try {
+      // 计算30天前的时间戳
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - 30);
+      
+      const oldSessions = await db.collection('sessions')
+        .where('lastActive', '<', cutoffDate)
+        .get();
+        
+      const batch = db.batch();
+      oldSessions.forEach(doc => {
+        batch.delete(doc.ref);
+      });
+      
+      await batch.commit();
+      console.log(`清理了 ${oldSessions.size} 个过期会话`);
+    } catch (error) {
+      console.error('清理旧会话失败:', error);
+    }
+  } else {
+    // 内存存储版本的清理
+    const now = new Date();
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - 30);
     
-    const oldSessions = await db.collection('sessions')
-      .where('lastActive', '<', cutoffDate)
-      .get();
-      
-    const batch = db.batch();
-    oldSessions.forEach(doc => {
-      batch.delete(doc.ref);
-    });
-    
-    await batch.commit();
-    console.log(`清理了 ${oldSessions.size} 个过期会话`);
-  } catch (error) {
-    console.error('清理旧会话失败:', error);
+    let cleanedCount = 0;
+    for (const userId in userSessions) {
+      if (userSessions[userId].lastActive < cutoffDate) {
+        delete userSessions[userId];
+        cleanedCount++;
+      }
+    }
+    if (cleanedCount > 0) {
+      console.log(`清理了 ${cleanedCount} 个过期内存会话`);
+    }
   }
 }
 
