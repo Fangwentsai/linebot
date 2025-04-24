@@ -139,7 +139,7 @@ async function handleEvent(event) {
     // 發送歡迎詞
     return lineClient.replyMessage(event.replyToken, {
       type: 'text',
-      text: `嗨～👋 感謝您加入小晶為好友！
+      text: `嗨～👋 感謝{Nickname}爸爸/媽媽加入小晶為好友！
 
 我是晶璽健康的專業AI保健顧問「小晶」✨，很高興認識您！
 
