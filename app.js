@@ -62,12 +62,85 @@ const CWA_API_KEY = "CWA-E3034BF2-AE4B-4D55-B6AA-1BDC01372CF7";  // 使用原來
 // 讀取產品數據
 let productData = [];
 try {
-  const rawData = fs.readFileSync(path.join(__dirname, 'jh_health_products.json'), 'utf8');
-  productData = JSON.parse(rawData);
-  console.log(`成功載入 ${productData.length} 個產品數據`);
+  const productFilePath = path.join(__dirname, 'jh_health_products.json');
+  console.log(`嘗試讀取產品數據文件: ${productFilePath}`);
+  if (fs.existsSync(productFilePath)) {
+    const rawData = fs.readFileSync(productFilePath, 'utf8');
+    productData = JSON.parse(rawData);
+    console.log(`成功載入 ${productData.length} 個產品數據`);
+  } else {
+    console.log('產品數據文件不存在，將使用默認空數據');
+    // 創建一個基本的產品數據默認值
+    productData = [
+      {
+        name: "醣可淨 BMEP",
+        categories: ["三高調節", "健康管理"],
+        features: ["專利山苦瓜萃取", "低溫水萃技術", "經醫師與營養師推薦"],
+        tags: ["三高", "血糖", "代謝"]
+      },
+      {
+        name: "藻股康 S.B.S",
+        categories: ["關節保健", "行動力提升"],
+        features: ["褐藻萃取", "小分子SBS", "獨家配方"],
+        tags: ["關節", "骨骼", "行動力"]
+      },
+      {
+        name: "衛的勝",
+        categories: ["腸胃保健", "免疫調節"],
+        features: ["AB克菲爾菌", "5大菌種", "共生發酵技術"],
+        tags: ["腸胃", "消化", "益生菌"]
+      },
+      {
+        name: "御薑君",
+        categories: ["機能強化", "體力提升"],
+        features: ["四合一複方薑黃", "日本沖繩原裝", "高吸收率"],
+        tags: ["疲勞", "體力", "活力"]
+      },
+      {
+        name: "靚舒暢 SIRT",
+        categories: ["體態管理", "代謝調節"],
+        features: ["專業營養師推薦", "獨家專利配方", "促進新陳代謝"],
+        tags: ["體重", "代謝", "體態"]
+      }
+    ];
+    console.log(`已創建 ${productData.length} 個默認產品數據`);
+  }
 } catch (error) {
   console.error('讀取產品數據失敗:', error);
-  console.log('將使用空的產品數據集');
+  console.log('將使用基本默認產品數據集');
+  // 使用基本默認值
+  productData = [
+    {
+      name: "醣可淨 BMEP",
+      categories: ["三高調節"],
+      features: ["專利山苦瓜萃取", "調節血糖"],
+      tags: ["三高"]
+    },
+    {
+      name: "藻股康 S.B.S",
+      categories: ["關節保健"],
+      features: ["褐藻萃取", "關節保養"],
+      tags: ["關節"]
+    },
+    {
+      name: "衛的勝",
+      categories: ["腸胃保健"],
+      features: ["益生菌複合配方", "腸道健康"],
+      tags: ["腸胃"]
+    },
+    {
+      name: "御薑君",
+      categories: ["機能強化"],
+      features: ["薑黃萃取", "提升活力"],
+      tags: ["疲勞"]
+    },
+    {
+      name: "靚舒暢 SIRT",
+      categories: ["體態管理"],
+      features: ["促進代謝", "體重管理"],
+      tags: ["體重"]
+    }
+  ];
 }
 
 // LINE配置
@@ -633,7 +706,7 @@ function getDirectRecommendation(query) {
   console.log(`使用直接推薦回應: ${query}`);
   
   if (query.includes('維生素') || query.includes('營養素')) {
-    return `🌟 產品推薦 ��\n
+    return `🌟 產品推薦 🌟\n
 【多維營養素 - 全方位保健】
 ✨ 特點：完整的維生素B群、維生素C、維生素D3和礦物質組合；
       🔬 科學配方比例，強化吸收率；
