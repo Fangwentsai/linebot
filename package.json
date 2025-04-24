@@ -1,24 +1,35 @@
 {
-  "name": "linebot-chatgpt",
+  "name": "jh-health-linebot",
   "version": "1.0.0",
+  "description": "晶璽健康保健品諮詢Line機器人",
   "main": "app.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "PORT=3000 node app.js",
-    "dev": "nodemon app.js"
+    "start": "node app.js",
+    "dev": "nodemon app.js",
+    "backup": "node backup_script.js",
+    "scrape": "python jh_health_scraper.py",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "这是一个使用Google Gemini API的LINE Bot。",
+  "keywords": [
+    "linebot",
+    "chatbot",
+    "health",
+    "jh-health",
+    "openai"
+  ],
+  "author": "JH Health",
+  "license": "UNLICENSED",
+  "private": true,
   "dependencies": {
     "@line/bot-sdk": "^7.5.2",
-    "axios": "^1.8.4",
-    "dotenv": "^16.0.3",
+    "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "openai": "^4.0.0"
   },
   "devDependencies": {
-    "nodemon": "^3.1.9"
+    "nodemon": "^2.0.22"
+  },
+  "engines": {
+    "node": ">=14.0.0"
   }
 }
