@@ -640,16 +640,18 @@ function sendProductImage(replyToken, productName) {
 // 獲取天氣信息的函數
 async function getWeatherInfo() {
   try {
-    // 獲取全臺天氣預報 (F-C0032-001)
+    console.log('正在獲取天氣信息...');
+    // 獲取全臺天氣預報 (F-C0044-001)
     const response = await axios.get(
-      'https://opendata.cwb.gov.tw/api/v1/rest/datastore/F-C0032-001',
+      'https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0044-001',
       {
         params: {
           Authorization: CWA_API_KEY,
           format: 'JSON',
           locationName: '臺北市,新北市,桃園市,臺中市,臺南市,高雄市', // 主要城市
           elementName: 'Wx,PoP,MinT,MaxT' // 天氣現象, 降雨機率, 最低溫度, 最高溫度
-        }
+        },
+        timeout: 10000, // 設定超時時間為10秒
       }
     );
 
@@ -759,7 +761,32 @@ async function getWeatherInfo() {
     return weatherSummary;
   } catch (error) {
     console.error('獲取天氣信息失敗:', error);
-    return ''; // 如果出錯則返回空字符串
+    
+    // 針對不同錯誤類型提供更具體的處理
+    if (error.code === 'ENOTFOUND' || error.code === 'EAI_AGAIN') {
+      console.error('網絡連接問題：無法解析域名，可能是DNS服務器問題或網絡連接中斷');
+      return '抱歉，目前無法獲取天氣信息，網絡連接出現問題。您可以直接詢問我有關健康產品的問題！';
+    }
+    
+    if (error.code === 'ECONNREFUSED') {
+      console.error('連接被拒絕，服務器可能未運行或拒絕接受連接');
+      return '抱歉，目前無法獲取天氣信息，氣象服務暫時不可用。您可以直接詢問我有關健康產品的問題！';
+    }
+    
+    if (error.code === 'ETIMEDOUT' || error.code === 'ESOCKETTIMEDOUT') {
+      console.error('連接超時，服務器回應時間過長');
+      return '抱歉，氣象服務回應超時，暫時無法獲取天氣信息。您可以直接詢問我有關健康產品的問題！';
+    }
+    
+    // Axios特定錯誤處理
+    if (error.response) {
+      // 服務器回應了錯誤狀態碼
+      console.error(`服務器返回錯誤狀態碼: ${error.response.status}`);
+      return '抱歉，氣象服務器出現問題，暫時無法獲取天氣信息。您可以直接詢問我有關健康產品的問題！';
+    }
+    
+    // 默認返回信息
+    return '抱歉，目前無法獲取天氣信息。您可以直接詢問我有關健康產品的問題！';
   }
 }
 
