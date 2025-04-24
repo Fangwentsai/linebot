@@ -146,27 +146,63 @@ async function handleEvent(event) {
       // 第二步：附加產品推薦
       const careText = careResponse.choices[0].message.content;
       const productText = getDirectRecommendation(userInput);
-      const fullResponse = careText + productText;
+      
+      // 先發送關懷回應
+      await lineClient.replyMessage(event.replyToken, {
+        type: 'text',
+        text: careText
+      });
+      
+      // 延遲一秒後再發送產品推薦
+      setTimeout(async () => {
+        try {
+          await lineClient.pushMessage(event.source.userId, {
+            type: 'text',
+            text: productText
+          });
+        } catch (err) {
+          console.error('發送產品推薦失敗:', err);
+        }
+      }, 1000);
       
       // 找出推薦的產品名稱
       let recommendedProduct = '';
-      if (userInput.includes('三高')) recommendedProduct = '醣可淨';
+      let productImages = [];
+      
+      if (userInput.includes('三高')) {
+        recommendedProduct = '醣可淨';
+        productImages = [
+          'https://jhhealth.com.tw/wp-content/uploads/2024-1225-%E5%B0%B1%E5%A6%A5%E5%AE%9A%E7%94%A2%E5%93%81%E9%A0%81-%E8%AA%BF%E6%95%B4%E8%A8%AD%E8%A8%88-%E4%BF%AE%E6%94%B9%E7%89%881.jpg',
+          'https://jhhealth.com.tw/wp-content/uploads/2023/03/231222-%E5%B0%B1%E5%A6%A5%E5%AE%9A%E5%95%86%E5%93%81%E9%A0%812.jpg'
+        ];
+      }
       else if (userInput.includes('疲勞') || userInput.includes('機能強化')) recommendedProduct = '御薑君';
       else if (userInput.includes('腸胃')) recommendedProduct = '衛的勝';
       else if (userInput.includes('骨') || userInput.includes('關節')) recommendedProduct = '藻股康';
       else if (userInput.includes('窈窕') || userInput.includes('代謝')) recommendedProduct = '靚舒暢';
       
-      // 發送文字回覆
-      await lineClient.replyMessage(event.replyToken, {
-        type: 'text',
-        text: fullResponse
-      });
-      
-      // 如果有找到推薦產品，稍後再發送圖片
-      if (recommendedProduct) {
+      // 發送產品圖片(如果有)
+      if (productImages.length > 0) {
         setTimeout(async () => {
           try {
-            // 使用pushMessage而非replyMessage
+            for (const imageUrl of productImages) {
+              await lineClient.pushMessage(event.source.userId, {
+                type: 'image',
+                originalContentUrl: imageUrl,
+                previewImageUrl: imageUrl
+              });
+              // 多張圖片間隔發送
+              await new Promise(resolve => setTimeout(resolve, 500));
+            }
+          } catch (err) {
+            console.error('發送圖片失敗:', err);
+          }
+        }, 2000);
+      }
+      // 舊版本的發送圖片代碼（保留作為備份）
+      else if (recommendedProduct) {
+        setTimeout(async () => {
+          try {
             await lineClient.pushMessage(event.source.userId, {
               type: 'image',
               originalContentUrl: `https://jhhealth.com.tw/product-images/${recommendedProduct}.jpg`,
@@ -175,7 +211,7 @@ async function handleEvent(event) {
           } catch (err) {
             console.error('發送圖片失敗:', err);
           }
-        }, 1000);
+        }, 2000);
       }
       
       return;
@@ -284,6 +320,13 @@ function getDirectRecommendation(query) {
       
 【醣可淨 PLUS – 鋅醣高手】
 ✨ 加強版配方，提供更全面的保健效果。
+
+【妥定 – SBH 植萃複方】
+✨ 資深藝人黃建群代言推薦
+✨ 獨創SBH配方：全方位調整、修護三高問題
+✨ 專利藤黃果萃取：高活性HCA、有助代謝調節
+✨ 專利棕梠果萃取：富含維生素E，增加Q10合成
+✨ 高達28篇專利認證，科學實證有效
       
 💡 搭配均衡飲食與規律運動，效果更佳！`;
   }
