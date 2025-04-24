@@ -4,9 +4,11 @@ const line = require('@line/bot-sdk');
 const OpenAI = require('openai');
 const fs = require('fs');
 const path = require('path');
+const axios = require('axios');
 
 // 定義常量
 const GPT_MODEL = "gpt-4o-mini";
+const CWA_API_KEY = "CWA-E3034BF2-AE4B-4D55-B6AA-1BDC01372CF7";
 
 // 讀取產品數據
 let productData = [];
@@ -119,7 +121,7 @@ const productImages = {
 
 // 產品網址對應表
 const productUrls = {
-  '三高': 'https://jhhealth.com.tw/product-category/health-biotech/blood-sugar-control/',
+  '三高': 'https://jhhealth.com.tw/product-tag/%e4%b8%89%e9%ab%98%e6%97%8f%e7%be%a4/',
   '疲勞': 'https://jhhealth.com.tw/product/turmeric-king/',
   '腸胃': 'https://jhhealth.com.tw/product/probiotic-warlords/',
   '關節': 'https://jhhealth.com.tw/product/aos/',
@@ -198,10 +200,22 @@ async function handleEvent(event) {
     
     // 處理簡單問候
     if (userInput.match(/^(你好|哈囉|嗨|hi|hello)/i)) {
-      return lineClient.replyMessage(event.replyToken, {
-        type: 'text',
-        text: `你好！👋 我是「小晶」，晶璽健康的專業AI諮詢員 ✨\n\n很高興為您服務！我可以為您介紹各種保健品知識，並根據您的需求推薦最適合的產品。\n\n有什麼保健需求想了解的嗎？😊`
-      });
+      try {
+        // 獲取天氣數據
+        const weatherInfo = await getWeatherInfo();
+        
+        return lineClient.replyMessage(event.replyToken, {
+          type: 'text',
+          text: `你好！👋 我是「小晶」，晶璽健康的專業AI諮詢員 ✨\n\n${weatherInfo}\n\n很高興為您服務！我可以為您介紹各種保健品知識，並根據您的需求推薦最適合的產品。\n\n有什麼保健需求想了解的嗎？😊`
+        });
+      } catch (error) {
+        console.error('獲取天氣信息失敗:', error);
+        // 如果無法獲取天氣，仍然返回問候
+        return lineClient.replyMessage(event.replyToken, {
+          type: 'text',
+          text: `你好！👋 我是「小晶」，晶璽健康的專業AI諮詢員 ✨\n\n很高興為您服務！我可以為您介紹各種保健品知識，並根據您的需求推薦最適合的產品。\n\n有什麼保健需求想了解的嗎？😊`
+        });
+      }
     }
     
     // 檢查是否是產品查詢
@@ -272,7 +286,7 @@ async function handleEvent(event) {
         try {
           await lineClient.pushMessage(event.source.userId, {
             type: 'text',
-            text: productText + '\n\n請爸爸/媽媽參考一下，如果有需要我再提供網頁連結讓您參考😊\n\n🚚 另外，晶璽健康現在全館滿2,000即享免運服務，購買後直接送到家唷！😊'
+            text: productText + '\n\n請爸爸/媽媽參考一下，如果有需要我再提供網頁連結讓您參考😊'
           });
         } catch (err) {
           console.error('發送產品推薦失敗:', err);
@@ -280,6 +294,7 @@ async function handleEvent(event) {
       }, 1000);
       
       // 發送產品圖片(如果有)，使用輪播式訊息
+      /*
       if (productImages[recommendedProduct] && productImages[recommendedProduct].length > 0) {
         setTimeout(async () => {
           try {
@@ -316,6 +331,7 @@ async function handleEvent(event) {
           }
         }, 2000);
       }
+      */
       
       return;
     }
@@ -401,7 +417,7 @@ function getDirectRecommendation(query) {
   console.log(`使用直接推薦回應: ${query}`);
   
   if (query.includes('維生素') || query.includes('營養素')) {
-    return `\n\n🌟 產品推薦 🌟\n
+    return `🌟 產品推薦 🌟\n
 【多維營養素 - 全方位保健】
 ✨ 特點：完整的維生素B群、維生素C、維生素D3和礦物質組合；
       🔬 科學配方比例，強化吸收率；
@@ -416,7 +432,13 @@ function getDirectRecommendation(query) {
   }
   
   if (query.includes('三高')) {
-    return `\n\n🌟 產品推薦 🌟\n
+    return `🌟 產品推薦 🌟\n
+【日常三高健康管理重點】
+1️⃣ 均衡飲食：減少精緻澱粉和糖分攝取，多吃蔬果和優質蛋白
+2️⃣ 規律運動：每週至少150分鐘中等強度運動，幫助代謝
+3️⃣ 良好作息：充足睡眠，避免熬夜，減少身體壓力
+4️⃣ 定期檢查：每3-6個月監測一次血壓、血糖和血脂數值
+
 【醣可淨 BMEP – 安唐神器】
 ✨ 特點：專利山苦瓜萃取，低溫水萃技術，經醫師與營養師雙推薦；
       🔬 螯合鋅、酵母鉻成分提升利用率及吸收率。
@@ -435,7 +457,14 @@ function getDirectRecommendation(query) {
   }
   
   if (query.includes('疲勞') || query.includes('累') || query.includes('機能強化')) {
-    return `\n\n🌟 產品推薦 🌟\n
+    return `🌟 產品推薦 🌟\n
+【改善疲勞關鍵要點】
+1️⃣ 規律作息：固定時間睡眠，每天7-8小時為佳
+2️⃣ 均衡營養：多攝取高蛋白、優質脂肪和複合碳水化合物
+3️⃣ 適當運動：每天30分鐘有氧運動，增強體力
+4️⃣ 減壓放鬆：學習減壓技巧，如深呼吸、冥想等
+5️⃣ 補充水分：每天保持2000-2500ml水分攝取
+
 【御薑君】
 特點：黃金比例四合一複方薑黃，日本沖繩原裝進口；
       四氫薑黃素含量高達35倍，吸收率高！
@@ -445,7 +474,14 @@ function getDirectRecommendation(query) {
   }
   
   if (query.includes('腸胃') || query.includes('消化') || query.includes('順暢') || query.includes('腸道') || query.includes('腸道健康')) {
-    return `\n\n🌟 產品推薦 🌟\n
+    return `🌟 產品推薦 🌟\n
+【腸胃保健基礎要點】
+1️⃣ 飲食規律：定時定量進食，避免暴飲暴食
+2️⃣ 細嚼慢嚥：充分咀嚼食物，減輕腸胃負擔
+3️⃣ 多纖維少油：增加膳食纖維攝取，減少油膩食物
+4️⃣ 適量喝水：飯前飯後適量喝水，幫助消化
+5️⃣ 保持運動：溫和運動促進腸胃蠕動
+
 【衛的勝 – 5 大護衛軍】
 ✨ 特點：AB克菲爾菌組成，全球唯一「完全共生發酵技術」
 ✨ 每包含270億專利特有菌數，遠超一般益生菌產品
@@ -463,7 +499,13 @@ function getDirectRecommendation(query) {
   }
   
   if (query.includes('骨') || query.includes('關節')) {
-    return `\n\n🌟 產品推薦 🌟\n
+    return `🌟 產品推薦 🌟\n
+【關節保健重要指南】
+1️⃣ 維持理想體重：減輕關節負擔
+2️⃣ 適度鍛鍊：加強肌肉力量，保護關節
+3️⃣ 正確姿勢：避免不良姿勢導致關節磨損
+4️⃣ 溫養關節：避免長時間同一姿勢，適時熱敷
+
 【藻股康 S.B.S – 護股 SBS】
 特點：80公斤褐藻僅能萃取1克珍貴SBS，天然精華；
       小分子褐藻，營養直入好吸收；
@@ -473,7 +515,14 @@ function getDirectRecommendation(query) {
   }
   
   if (query.includes('窈窕') || query.includes('代謝') || query.includes('體重')) {
-    return `\n\n🌟 產品推薦 🌟\n
+    return `🌟 產品推薦 🌟\n
+【健康體重管理重點】
+1️⃣ 均衡飲食：控制熱量攝取，增加蛋白質和纖維素比例
+2️⃣ 多元運動：有氧+肌力訓練，每週至少150分鐘
+3️⃣ 充足睡眠：保持7-8小時優質睡眠，促進代謝
+4️⃣ 喝足夠水：每天至少2000ml，加速新陳代謝
+5️⃣ 定期監測：記錄體重變化，及時調整計劃
+
 【靚舒暢 SIRT 體控方】
 特點：專業營養師推薦，獨家專利配方；
       含有薑黃素、綠茶萃取物等成分；
@@ -483,7 +532,14 @@ function getDirectRecommendation(query) {
   }
   
   // 默認推薦
-  return `\n\n🌟 產品推薦 🌟\n
+  return `🌟 產品推薦 🌟\n
+【日常健康管理要點】
+1️⃣ 均衡飲食：五穀雜糧為主，蔬果優質蛋白為輔
+2️⃣ 規律運動：每天30分鐘，提升心肺功能
+3️⃣ 充足睡眠：夜間7-8小時高品質睡眠
+4️⃣ 適當休息：適時放鬆身心，減少壓力
+5️⃣ 定期檢查：每年健康檢查，預防勝於治療
+
 晶璽健康擁有多款優質保健品可供選擇：
 
 【🦴 藻股康 SBS】- 骨關節保健
@@ -553,6 +609,7 @@ ${productDataStr}
 }
 
 // 發送圖片示例
+/*
 function sendProductImage(replyToken, productName) {
   // 根據產品名稱找到對應圖片URL
   let imageUrl = '';
@@ -577,6 +634,133 @@ function sendProductImage(replyToken, productName) {
     originalContentUrl: imageUrl,
     previewImageUrl: imageUrl
   });
+}
+*/
+
+// 獲取天氣信息的函數
+async function getWeatherInfo() {
+  try {
+    // 獲取全臺天氣預報 (F-C0032-001)
+    const response = await axios.get(
+      'https://opendata.cwb.gov.tw/api/v1/rest/datastore/F-C0032-001',
+      {
+        params: {
+          Authorization: CWA_API_KEY,
+          format: 'JSON',
+          locationName: '臺北市,新北市,桃園市,臺中市,臺南市,高雄市', // 主要城市
+          elementName: 'Wx,PoP,MinT,MaxT' // 天氣現象, 降雨機率, 最低溫度, 最高溫度
+        }
+      }
+    );
+
+    // 解析數據
+    const data = response.data;
+    if (!data || !data.records || !data.records.location || data.records.location.length === 0) {
+      throw new Error('無法獲取天氣數據');
+    }
+
+    // 準備天氣信息
+    let weatherSummary = '📅 今日全台天氣概況 📅\n';
+    
+    // 北中南東代表性城市的天氣
+    const regions = {
+      '北部': ['臺北市', '新北市'],
+      '中部': ['臺中市'],
+      '南部': ['臺南市', '高雄市'],
+      '桃竹苗': ['桃園市']
+    };
+    
+    // 記錄最高和最低溫度
+    let overallMinTemp = 100;
+    let overallMaxTemp = -100;
+    
+    // 統計各區域天氣
+    for (const [region, cities] of Object.entries(regions)) {
+      // 尋找該區域的城市數據
+      const cityData = data.records.location.filter(loc => cities.includes(loc.locationName));
+      
+      if (cityData.length > 0) {
+        // 用於該區域的天氣描述統計
+        const weatherTypes = {};
+        let regionMinTemp = 100;
+        let regionMaxTemp = -100;
+        let maxRainProb = 0;
+        
+        // 分析區域內各城市天氣數據
+        cityData.forEach(city => {
+          // 天氣現象
+          const weatherDesc = city.weatherElement.find(el => el.elementName === 'Wx')
+            .time[0].parameter.parameterName;
+          weatherTypes[weatherDesc] = (weatherTypes[weatherDesc] || 0) + 1;
+          
+          // 溫度
+          const minTemp = parseInt(city.weatherElement.find(el => el.elementName === 'MinT')
+            .time[0].parameter.parameterName);
+          const maxTemp = parseInt(city.weatherElement.find(el => el.elementName === 'MaxT')
+            .time[0].parameter.parameterName);
+          
+          regionMinTemp = Math.min(regionMinTemp, minTemp);
+          regionMaxTemp = Math.max(regionMaxTemp, maxTemp);
+          
+          overallMinTemp = Math.min(overallMinTemp, minTemp);
+          overallMaxTemp = Math.max(overallMaxTemp, maxTemp);
+          
+          // 降雨機率
+          const rainProb = parseInt(city.weatherElement.find(el => el.elementName === 'PoP')
+            .time[0].parameter.parameterName);
+          maxRainProb = Math.max(maxRainProb, rainProb);
+        });
+        
+        // 獲取該區域最常見的天氣現象
+        const mostCommonWeather = Object.entries(weatherTypes)
+          .sort((a, b) => b[1] - a[1])[0][0];
+        
+        // 選擇天氣emoji
+        let weatherEmoji = '🌤️';
+        if (mostCommonWeather.includes('晴') && !mostCommonWeather.includes('雨')) {
+          weatherEmoji = '☀️';
+        } else if (mostCommonWeather.includes('雨')) {
+          weatherEmoji = '🌧️';
+        } else if (mostCommonWeather.includes('雲')) {
+          weatherEmoji = '☁️';
+        } else if (mostCommonWeather.includes('陰')) {
+          weatherEmoji = '🌥️';
+        } else if (mostCommonWeather.includes('雪')) {
+          weatherEmoji = '❄️';
+        } else if (mostCommonWeather.includes('霧')) {
+          weatherEmoji = '🌫️';
+        }
+        
+        // 添加區域天氣摘要
+        weatherSummary += `${weatherEmoji} ${region}: ${mostCommonWeather}, ${regionMinTemp}°C-${regionMaxTemp}°C`;
+        
+        // 添加降雨機率(如果有顯著機率)
+        if (maxRainProb >= 30) {
+          weatherSummary += `, 降雨機率${maxRainProb}%`;
+        }
+        
+        weatherSummary += '\n';
+      }
+    }
+    
+    // 添加全台溫度範圍和健康提醒
+    weatherSummary += `🌡️ 全台溫度: ${overallMinTemp}°C - ${overallMaxTemp}°C\n`;
+    
+    // 根據天氣狀況提供健康建議
+    const avgTemp = (overallMinTemp + overallMaxTemp) / 2;
+    if (avgTemp < 15) {
+      weatherSummary += '❄️ 今日偏涼，外出記得添加衣物保暖，多喝溫水護胃！';
+    } else if (avgTemp > 28) {
+      weatherSummary += '🔆 今日偏熱，記得多補充水分，避免長時間曝曬於陽光下！';
+    } else {
+      weatherSummary += '🍃 今日溫度適宜，記得適時補充水分，保持健康作息！';
+    }
+    
+    return weatherSummary;
+  } catch (error) {
+    console.error('獲取天氣信息失敗:', error);
+    return ''; // 如果出錯則返回空字符串
+  }
 }
 
 // 啟動服務器
