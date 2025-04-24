@@ -641,9 +641,9 @@ function sendProductImage(replyToken, productName) {
 async function getWeatherInfo() {
   try {
     console.log('正在獲取天氣信息...');
-    // 獲取全臺天氣預報 (F-C0044-001)
+    // 獲取全臺天氣預報 (F-C0032-001)
     const response = await axios.get(
-      'https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0044-001',
+      'https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0032-001',
       {
         params: {
           Authorization: CWA_API_KEY,
