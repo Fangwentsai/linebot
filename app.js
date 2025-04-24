@@ -15,11 +15,24 @@ try {
   // 首先嘗試從環境變量讀取Firebase憑證
   if (process.env.FIREBASE_CREDENTIALS) {
     console.log('從環境變量初始化Firebase');
-    const serviceAccount = JSON.parse(process.env.FIREBASE_CREDENTIALS);
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount)
-    });
-    firebaseInitialized = true;
+    try {
+      const serviceAccount = JSON.parse(process.env.FIREBASE_CREDENTIALS);
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+      });
+      console.log('從環境變量成功初始化Firebase');
+      firebaseInitialized = true;
+    } catch (envError) {
+      console.error('環境變量解析失敗:', envError.message);
+      console.log('環境變量內容長度:', process.env.FIREBASE_CREDENTIALS ? process.env.FIREBASE_CREDENTIALS.length : 'undefined');
+      // 嘗試從文件讀取
+      const serviceAccount = require('./firebase-credentials.json');
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+      });
+      console.log('從文件成功初始化Firebase');
+      firebaseInitialized = true;
+    }
   } else {
     // 嘗試從文件讀取憑證
     console.log('嘗試從文件初始化Firebase');
@@ -27,6 +40,7 @@ try {
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount)
     });
+    console.log('從文件成功初始化Firebase');
     firebaseInitialized = true;
   }
   console.log('Firebase初始化成功');
@@ -37,6 +51,7 @@ try {
 
 // 如果Firebase初始化成功，使用Firestore；否則使用内存存儲
 const db = firebaseInitialized ? admin.firestore() : null;
+console.log('使用存儲類型:', firebaseInitialized ? 'Firestore' : '內存存儲');
 
 // 定義常量
 const GPT_MODEL = "gpt-4o-mini";
@@ -439,13 +454,17 @@ async function handleEvent(event) {
 
 // 获取用户会话
 async function getUserSession(userId) {
+  console.log(`獲取用戶 ${userId} 的會話`);
   // 如果Firebase初始化成功，使用Firestore
   if (firebaseInitialized && db) {
     try {
+      console.log(`嘗試從Firestore獲取用戶 ${userId} 的會話`);
       const doc = await db.collection('sessions').doc(userId).get();
       if (doc.exists) {
+        console.log(`成功獲取用戶 ${userId} 的既有會話`);
         return doc.data();
       } else {
+        console.log(`用戶 ${userId} 沒有既有會話，創建新會話`);
         // 新用户，创建默认会话
         const defaultSession = {
           messages: [
@@ -454,10 +473,11 @@ async function getUserSession(userId) {
           lastActive: admin.firestore.FieldValue.serverTimestamp()
         };
         await db.collection('sessions').doc(userId).set(defaultSession);
+        console.log(`已為用戶 ${userId} 創建新會話`);
         return defaultSession;
       }
     } catch (error) {
-      console.error('获取用户会话失败:', error);
+      console.error(`從Firestore獲取用戶 ${userId} 會話失敗:`, error);
       // 返回默认会话，避免错误影响用户体验
       return {
         messages: [{ role: "system", content: getSystemPrompt() }],
@@ -466,11 +486,15 @@ async function getUserSession(userId) {
     }
   } else {
     // 使用内存存储
+    console.log(`使用內存存儲獲取用戶 ${userId} 的會話`);
     if (!userSessions[userId]) {
+      console.log(`用戶 ${userId} 沒有內存會話，創建新會話`);
       userSessions[userId] = {
         messages: [{ role: "system", content: getSystemPrompt() }],
         lastActive: new Date()
       };
+    } else {
+      console.log(`成功獲取用戶 ${userId} 的內存會話，消息數量: ${userSessions[userId].messages.length}`);
     }
     return userSessions[userId];
   }
@@ -478,21 +502,43 @@ async function getUserSession(userId) {
 
 // 更新用户会话
 async function updateUserSession(userId, messages) {
+  console.log(`更新用戶 ${userId} 的會話，消息數量: ${messages.length}`);
   // 如果Firebase初始化成功，使用Firestore
   if (firebaseInitialized && db) {
     try {
+      console.log(`嘗試更新用戶 ${userId} 的Firestore會話`);
       await db.collection('sessions').doc(userId).update({
         messages: messages,
         lastActive: admin.firestore.FieldValue.serverTimestamp()
       });
+      console.log(`成功更新用戶 ${userId} 的Firestore會話`);
     } catch (error) {
-      console.error('更新用户会话失败:', error);
+      console.error(`更新用戶 ${userId} Firestore會話失敗:`, error);
+      // 嘗試創建而不是更新
+      try {
+        console.log(`嘗試創建用戶 ${userId} 的Firestore會話`);
+        await db.collection('sessions').doc(userId).set({
+          messages: messages,
+          lastActive: admin.firestore.FieldValue.serverTimestamp()
+        });
+        console.log(`成功創建用戶 ${userId} 的Firestore會話`);
+      } catch (setError) {
+        console.error(`創建用戶 ${userId} Firestore會話失敗:`, setError);
+      }
     }
   } else {
     // 使用内存存储
+    console.log(`使用內存存儲更新用戶 ${userId} 的會話`);
     if (userSessions[userId]) {
       userSessions[userId].messages = messages;
       userSessions[userId].lastActive = new Date();
+      console.log(`成功更新用戶 ${userId} 的內存會話`);
+    } else {
+      console.log(`用戶 ${userId} 沒有內存會話，創建新會話`);
+      userSessions[userId] = {
+        messages: messages,
+        lastActive: new Date()
+      };
     }
   }
 }
@@ -587,7 +633,7 @@ function getDirectRecommendation(query) {
   console.log(`使用直接推薦回應: ${query}`);
   
   if (query.includes('維生素') || query.includes('營養素')) {
-    return `🌟 產品推薦 🌟\n
+    return `🌟 產品推薦 ��\n
 【多維營養素 - 全方位保健】
 ✨ 特點：完整的維生素B群、維生素C、維生素D3和礦物質組合；
       🔬 科學配方比例，強化吸收率；
@@ -829,6 +875,7 @@ async function getWeatherInfo() {
     );
     
     console.log('成功獲取天氣數據');
+    console.log('天氣數據狀態碼:', response.status);
     
     // 如果API金鑰無效，這裡會返回401錯誤
     if (response.status !== 200) {
@@ -839,7 +886,15 @@ async function getWeatherInfo() {
     // 解析數據
     const data = response.data;
     if (!data || !data.success || !data.records || !data.records.location || data.records.location.length === 0) {
+      console.error('天氣數據格式不正確:', JSON.stringify(data).substring(0, 200) + '...');
       throw new Error('無法獲取天氣數據或資料格式錯誤');
+    }
+
+    // 輸出部分天氣數據用於調試
+    if (data.records.location[0] && data.records.location[0].weatherElement) {
+      const sampleLocation = data.records.location[0].locationName;
+      const sampleTime = data.records.location[0].weatherElement[0]?.time[0]?.startTime || 'unknown';
+      console.log(`天氣數據樣本: ${sampleLocation}, 時間: ${sampleTime}`);
     }
 
     // 準備天氣信息
