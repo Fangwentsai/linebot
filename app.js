@@ -8,7 +8,9 @@ const axios = require('axios');
 
 // 定義常量
 const GPT_MODEL = "gpt-4o-mini";
-const CWA_API_KEY = "CWA-E3034BF2-AE4B-4D55-B6AA-1BDC01372CF7";
+// 中央氣象署開放資料平台API授權碼，請到 https://opendata.cwa.gov.tw/ 申請
+// 此金鑰格式為 CWA-XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
+const CWA_API_KEY = "CWA-E3034BF2-AE4B-4D55-B6AA-1BDC01372CF7";  // 使用原來的API金鑰
 
 // 讀取產品數據
 let productData = [];
@@ -643,6 +645,8 @@ function sendProductImage(replyToken, productName) {
 async function getWeatherInfo() {
   try {
     console.log('正在獲取天氣信息...');
+    console.log(`使用API金鑰: ${CWA_API_KEY}`);
+    
     // 獲取全臺天氣預報 (F-C0032-001)
     const response = await axios.get(
       'https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0032-001',
@@ -657,6 +661,14 @@ async function getWeatherInfo() {
         timeout: 10000, // 設定超時時間為10秒
       }
     );
+    
+    console.log('成功獲取天氣數據');
+    
+    // 如果API金鑰無效，這裡會返回401錯誤
+    if (response.status !== 200) {
+      console.error(`獲取天氣數據失敗，狀態碼: ${response.status}`);
+      return '抱歉，目前無法獲取天氣信息。您可以直接詢問我有關健康產品的問題！';
+    }
 
     // 解析數據
     const data = response.data;
