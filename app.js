@@ -123,7 +123,10 @@ const productUrls = {
   '疲勞': 'https://jhhealth.com.tw/product/turmeric-king/',
   '腸胃': 'https://jhhealth.com.tw/product/probiotic-warlords/',
   '關節': 'https://jhhealth.com.tw/product/aos/',
-  '體重': 'https://jhhealth.com.tw/product/sirt/'
+  '體重': 'https://jhhealth.com.tw/product/sirt/',
+  // 添加通用商城入口
+  '賣場': 'https://jhhealth.com.tw/product-category/health-biotech/',
+  '官網': 'https://jhhealth.com.tw/'
 };
 
 // 已發送商品推薦的用戶記錄
@@ -131,6 +134,34 @@ const userProductRecommendations = {};
 
 // 事件處理函數
 async function handleEvent(event) {
+  // 處理用戶加入好友事件
+  if (event.type === 'follow') {
+    // 發送歡迎詞
+    return lineClient.replyMessage(event.replyToken, {
+      type: 'text',
+      text: `嗨～👋 感謝您加入小晶為好友！
+
+我是晶璽健康的專業AI保健顧問「小晶」✨，很高興認識您！
+
+【我能為您做什麼】
+✅ 提供專業保健知識
+✅ 針對您的健康需求給予建議
+✅ 推薦適合您的晶璽健康產品
+✅ 回答產品相關問題
+
+您可以直接問我關於：
+💡 三高問題的調理方式
+💡 腸胃保健的方法
+💡 關節保養的建議
+💡 提升精力的秘訣
+💡 體重管理的方案
+
+只要告訴我您的健康需求，我就能提供最適合的建議喔！😊
+
+現在，有什麼我能幫您的嗎？`
+    });
+  }
+  
   if (event.type !== 'message' || event.message.type !== 'text') {
     return Promise.resolve(null);
   }
@@ -141,15 +172,28 @@ async function handleEvent(event) {
   
   try {
     // 處理用戶對產品鏈接的請求
-    if (userProductRecommendations[userId] && 
-        (userInput.match(/^(好|可以|好的|請給我|是的|鏈接|連結|網址|官網|網站|購買|買|了解更多)/i))) {
-      const productType = userProductRecommendations[userId];
-      const productUrl = productUrls[productType] || 'https://jhhealth.com.tw/';
+    if (userInput.match(/^(好|可以|好的|請給我|是的|鏈接|連結|網址|官網|網站|購買|買|了解更多|賣場|想看|提供)/i) && 
+        (userInput.includes('連結') || userInput.includes('鏈接') || userInput.includes('網址') || 
+         userInput.includes('官網') || userInput.includes('網站') || userInput.includes('購買') || 
+         userInput.includes('賣場') || userInput.includes('商城'))) {
       
-      return lineClient.replyMessage(event.replyToken, {
-        type: 'text',
-        text: `這是我們的${productType}產品連結，您可以點擊查看更多詳情和購買方式：\n\n${productUrl}\n\n如果有其他問題，隨時都可以問我喔！😊`
-      });
+      // 檢查是否有推薦過產品，如果有則提供該產品的連結
+      if (userProductRecommendations[userId]) {
+        const productType = userProductRecommendations[userId];
+        const productUrl = productUrls[productType] || 'https://jhhealth.com.tw/';
+        
+        return lineClient.replyMessage(event.replyToken, {
+          type: 'text',
+          text: `這是我們的${productType}產品連結，您可以點擊查看更多詳情和購買方式：\n\n${productUrl}\n\n如果有其他問題，隨時都可以問我喔！😊`
+        });
+      } 
+      // 沒有推薦過產品，提供通用賣場連結
+      else {
+        return lineClient.replyMessage(event.replyToken, {
+          type: 'text',
+          text: `這是晶璽健康的官方商城，您可以瀏覽所有產品：\n\n${productUrls['賣場']}\n\n您有特定想了解的健康需求嗎？我可以為您推薦最適合的產品！😊`
+        });
+      }
     }
     
     // 處理簡單問候
