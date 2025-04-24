@@ -15,6 +15,7 @@
 - Python 3.8 或更高版本 (用於爬蟲功能)
 - 有效的Line Channel (Messaging API)
 - OpenAI API 密鑰
+- Firebase 服務帳戶（用於數據存儲）
 
 ## 安裝步驟
 
@@ -40,6 +41,11 @@ LINE_CHANNEL_SECRET=your_line_channel_secret
 LINE_CHANNEL_ACCESS_TOKEN=your_line_channel_access_token
 OPENAI_API_KEY=your_openai_api_key
 ```
+
+5. 設置 Firebase 憑證:
+   - 從 Firebase 控制台下載服務帳戶金鑰(*.json)
+   - 將下載的 JSON 文件重命名為 `firebase-credentials.json` 並放在項目根目錄
+   - **注意:** 這個文件包含敏感信息，已被添加到 `.gitignore`，請不要提交到版本控制系統
 
 ## 使用方法
 
@@ -94,6 +100,8 @@ const HEALTH_KEYWORDS = [
 - **Line Bot無法連接**: 確保LINE_CHANNEL_SECRET和LINE_CHANNEL_ACCESS_TOKEN設置正確。
 
 - **OpenAI API錯誤**: 檢查OPENAI_API_KEY是否有效，以及API用量是否超限。
+
+- **Firebase連接問題**: 確保`firebase-credentials.json`文件正確配置且未損壞。文件格式可參考項目中的`firebase-credentials.example.json`範本。
 
 ## 授權信息
 
