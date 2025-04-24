@@ -99,21 +99,21 @@ const HEALTH_KEYWORDS = [
 // 產品圖像陣列
 const productImages = {
   '三高': [
-    'https://i.imgur.com/BzRufoL.jpg', 
-    'https://i.imgur.com/6hy2qjL.jpg',
-    'https://i.imgur.com/uxcGK9O.jpg'  // 妥定 SBH 植萃複方圖像
+    'https://raw.githubusercontent.com/Fangwentsai/linebot/main/product_images/bmep.jpg', 
+    'https://raw.githubusercontent.com/Fangwentsai/linebot/main/product_images/bmep-plus.jpg',
+    'https://raw.githubusercontent.com/Fangwentsai/linebot/main/product_images/sbh.jpg'  // 妥定 SBH 植萃複方圖像
   ],
   '疲勞': [
-    'https://i.imgur.com/aVXfbio.jpg'
+    'https://raw.githubusercontent.com/Fangwentsai/linebot/main/product_images/turmeric-king.jpg'
   ],
   '腸胃': [
-    'https://i.imgur.com/4pxksTv.jpg'
+    'https://raw.githubusercontent.com/Fangwentsai/linebot/main/product_images/probiotic-warlords.jpg'
   ],
   '關節': [
-    'https://i.imgur.com/hNQZszm.jpg'
+    'https://raw.githubusercontent.com/Fangwentsai/linebot/main/product_images/aos.jpg'
   ],
   '體重': [
-    'https://i.imgur.com/hfTXI9a.jpg'
+    'https://raw.githubusercontent.com/Fangwentsai/linebot/main/product_images/sirt.jpg'
   ]
 };
 
@@ -283,52 +283,13 @@ async function handleEvent(event) {
       if (productImages[recommendedProduct] && productImages[recommendedProduct].length > 0) {
         setTimeout(async () => {
           try {
-            // 如果有多張圖片，使用輪播訊息
-            if (productImages[recommendedProduct].length > 1) {
-              const columns = productImages[recommendedProduct].map(imageUrl => {
-                return {
-                  imageUrl: imageUrl,
-                  action: {
-                    type: 'message',
-                    label: '了解更多',
-                    text: '請給我產品連結'
-                  }
-                };
-              });
-              
-              await lineClient.pushMessage(event.source.userId, {
-                type: 'template',
-                altText: '產品圖片',
-                template: {
-                  type: 'image_carousel',
-                  columns: columns
-                }
-              });
-            } 
-            // 如果只有一張圖片，直接發送
-            else {
-              const imageUrl = productImages[recommendedProduct][0];
-              await lineClient.pushMessage(event.source.userId, {
-                type: 'image',
-                originalContentUrl: imageUrl,
-                previewImageUrl: imageUrl
-              });
-            }
+            // 由於圖片顯示問題，改為發送產品圖片的文字描述
+            await lineClient.pushMessage(event.source.userId, {
+              type: 'text',
+              text: `✨ 產品圖片暫時無法顯示，您可以透過產品鏈接查看詳細圖片和資訊。\n\n如需查看產品和購買，請回覆「我想看產品鏈接」即可。`
+            });
           } catch (err) {
-            console.error('發送圖片失敗:', err);
-            // 嘗試使用單一圖片方式發送
-            try {
-              for (const imageUrl of productImages[recommendedProduct]) {
-                await lineClient.pushMessage(event.source.userId, {
-                  type: 'image',
-                  originalContentUrl: imageUrl,
-                  previewImageUrl: imageUrl
-                });
-                await new Promise(resolve => setTimeout(resolve, 500));
-              }
-            } catch (innerErr) {
-              console.error('備用方式發送圖片也失敗:', innerErr);
-            }
+            console.error('發送圖片替代訊息失敗:', err);
           }
         }, 2000);
       }
