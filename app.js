@@ -259,6 +259,9 @@ const userProductRecommendations = {};
 // 用于存储用户会话的内存对象(临时替代Firebase)
 const userSessions = {};
 
+// 用戶輪廓資訊
+const userProfiles = {};
+
 // 事件處理函數
 async function handleEvent(event) {
   // 處理用戶加入好友事件
@@ -266,7 +269,7 @@ async function handleEvent(event) {
     // 發送歡迎詞
     return lineClient.replyMessage(event.replyToken, {
       type: 'text',
-      text: `嗨～👋 感謝{Nickname}爸爸/媽媽加入小晶為好友！
+      text: `嗨～👋 感謝您加入小晶為好友！
 
 我是晶璽健康的專業AI保健顧問「小晶」✨，很高興認識您！
 
@@ -285,7 +288,7 @@ async function handleEvent(event) {
 
 只要告訴我您的健康需求，我就能提供最適合的建議喔！😊
 
-現在，有什麼我能幫您的嗎？`
+方便請問您怎麼稱呼呢？這樣我能更親切地稱呼您～`
     });
   }
   
@@ -300,6 +303,15 @@ async function handleEvent(event) {
   try {
     // 获取用户会话
     const userSession = await getUserSession(userId);
+    
+    // 獲取用戶輪廓 (如果存在)
+    const userProfile = await getUserProfile(userId);
+    
+    // 檢查是否需要收集用戶資訊
+    const profileCollection = await handleProfileCollection(userId, userInput, event.replyToken);
+    if (profileCollection) {
+      return profileCollection; // 若已由資料收集處理，直接返回
+    }
     
     // 添加用户消息
     userSession.messages.push({
@@ -320,10 +332,13 @@ async function handleEvent(event) {
         const productType = userProductRecommendations[userId];
         const productUrl = productUrls[productType] || 'https://jhhealth.com.tw/';
         
+        // 根據用戶資料客製化稱呼
+        const greeting = getPersonalizedGreeting(userProfile);
+        
         // 更新对话历史
         userSession.messages.push({
           role: "assistant",
-          content: `這是我們的${productType}產品連結，您可以點擊查看更多詳情和購買方式：\n\n${productUrl}\n\n🚚 全館滿2,000即享免運服務，東西直接送到家！😊\n\n如果有其他問題，隨時都可以問我喔！😊`
+          content: `這是我們的${productType}產品連結，${greeting}可以點擊查看更多詳情和購買方式：\n\n${productUrl}\n\n🚚 全館滿2,000即享免運服務，東西直接送到家！😊\n\n如果有其他問題，隨時都可以問我喔！😊`
         });
         
         // 保存对话历史
@@ -331,15 +346,18 @@ async function handleEvent(event) {
         
         return lineClient.replyMessage(event.replyToken, {
           type: 'text',
-          text: `這是我們的${productType}產品連結，您可以點擊查看更多詳情和購買方式：\n\n${productUrl}\n\n🚚 全館滿2,000即享免運服務，東西直接送到家！😊\n\n如果有其他問題，隨時都可以問我喔！😊`
+          text: `這是我們的${productType}產品連結，${greeting}可以點擊查看更多詳情和購買方式：\n\n${productUrl}\n\n🚚 全館滿2,000即享免運服務，東西直接送到家！😊\n\n如果有其他問題，隨時都可以問我喔！😊`
         });
       } 
       // 沒有推薦過產品，提供通用賣場連結
       else {
+        // 根據用戶資料客製化稱呼
+        const greeting = getPersonalizedGreeting(userProfile);
+        
         // 更新对话历史
         userSession.messages.push({
           role: "assistant",
-          content: `這是晶璽健康的官方商城，您可以瀏覽所有產品：\n\n${productUrls['賣場']}\n\n🚚 全館滿2,000即享免運服務，東西直接送到家！😊\n\n您有特定想了解的健康需求嗎？我可以為您推薦最適合的產品！😊`
+          content: `這是晶璽健康的官方商城，${greeting}可以瀏覽所有產品：\n\n${productUrls['賣場']}\n\n🚚 全館滿2,000即享免運服務，東西直接送到家！😊\n\n${greeting}有特定想了解的健康需求嗎？我可以為您推薦最適合的產品！😊`
         });
         
         // 保存对话历史
@@ -347,7 +365,7 @@ async function handleEvent(event) {
         
         return lineClient.replyMessage(event.replyToken, {
           type: 'text',
-          text: `這是晶璽健康的官方商城，您可以瀏覽所有產品：\n\n${productUrls['賣場']}\n\n🚚 全館滿2,000即享免運服務，東西直接送到家！😊\n\n您有特定想了解的健康需求嗎？我可以為您推薦最適合的產品！😊`
+          text: `這是晶璽健康的官方商城，${greeting}可以瀏覽所有產品：\n\n${productUrls['賣場']}\n\n🚚 全館滿2,000即享免運服務，東西直接送到家！😊\n\n${greeting}有特定想了解的健康需求嗎？我可以為您推薦最適合的產品！😊`
         });
       }
     }
@@ -358,7 +376,10 @@ async function handleEvent(event) {
         // 獲取天氣數據
         const weatherInfo = await getWeatherInfo();
         
-        const replyText = `你好！👋 我是「小晶」，晶璽健康的專業AI諮詢員 ✨\n\n${weatherInfo}\n\n很高興為您服務！我可以為您介紹各種保健品知識，並根據您的需求推薦最適合的產品。\n\n有什麼保健需求想了解的嗎？😊`;
+        // 根據用戶資料客製化稱呼
+        const greeting = getPersonalizedGreeting(userProfile);
+        
+        const replyText = `你好！👋 ${greeting}，我是「小晶」，晶璽健康的專業AI諮詢員 ✨\n\n${weatherInfo}\n\n很高興為您服務！我可以為您介紹各種保健品知識，並根據您的需求推薦最適合的產品。\n\n有什麼保健需求想了解的嗎？😊`;
         
         // 更新对话历史
         userSession.messages.push({
@@ -376,7 +397,11 @@ async function handleEvent(event) {
       } catch (error) {
         console.error('獲取天氣信息失敗:', error);
         // 如果無法獲取天氣，仍然返回問候
-        const replyText = `你好！👋 我是「小晶」，晶璽健康的專業AI諮詢員 ✨\n\n很高興為您服務！我可以為您介紹各種保健品知識，並根據您的需求推薦最適合的產品。\n\n有什麼保健需求想了解的嗎？😊`;
+        
+        // 根據用戶資料客製化稱呼
+        const greeting = getPersonalizedGreeting(userProfile);
+        
+        const replyText = `你好！👋 ${greeting}，我是「小晶」，晶璽健康的專業AI諮詢員 ✨\n\n很高興為您服務！我可以為您介紹各種保健品知識，並根據您的需求推薦最適合的產品。\n\n有什麼保健需求想了解的嗎？😊`;
         
         // 更新对话历史
         userSession.messages.push({
@@ -466,12 +491,16 @@ async function handleEvent(event) {
         userProductRecommendations[userId] = recommendedProduct;
       }
       
+      // 客製化稱呼
+      const greeting = getPersonalizedGreeting(userProfile);
+      const greetingSuffix = greeting ? `${greeting}參考` : '參考';
+      
       // 延遲一秒後再發送產品推薦
       setTimeout(async () => {
         try {
           await lineClient.pushMessage(event.source.userId, {
             type: 'text',
-            text: productText + '\n\n請爸爸/媽媽參考一下，如果有需要我再提供網頁連結讓您參考😊'
+            text: productText + `\n\n請${greetingSuffix}一下，如果有需要我再提供網頁連結讓您參考😊`
           });
         } catch (err) {
           console.error('發送產品推薦失敗:', err);
@@ -482,6 +511,28 @@ async function handleEvent(event) {
     }
     
     // 一般對話處理
+    // 添加用戶輪廓信息到系統提示中
+    if (userProfile && (userProfile.nickname || userProfile.age || userProfile.gender)) {
+      // 找到當前系統提示
+      const systemPromptIndex = userSession.messages.findIndex(msg => msg.role === 'system');
+      if (systemPromptIndex !== -1) {
+        // 確保用戶輪廓信息被加入系統提示
+        const currentSystemPrompt = userSession.messages[systemPromptIndex].content;
+        if (!currentSystemPrompt.includes('用戶輪廓信息')) {
+          const profileInfo = `
+用戶輪廓信息：
+${userProfile.nickname ? `暱稱: ${userProfile.nickname}` : ''}
+${userProfile.gender ? `性別: ${userProfile.gender}` : ''}
+${userProfile.age ? `年齡: ${userProfile.age}` : ''}
+${userProfile.location ? `地區: ${userProfile.location}` : ''}
+
+根據上述用戶信息，使用適當的稱呼和語氣與用戶交流。`;
+          
+          userSession.messages[systemPromptIndex].content = currentSystemPrompt + profileInfo;
+        }
+      }
+    }
+    
     const response = await openai.chat.completions.create({
       model: GPT_MODEL,
       messages: userSession.messages,
@@ -523,6 +574,257 @@ async function handleEvent(event) {
       text: '抱歉，系統發生錯誤。請稍後再試。'
     });
   }
+}
+
+// 處理用戶輪廓收集
+async function handleProfileCollection(userId, userInput, replyToken) {
+  if (!userProfiles[userId]) {
+    userProfiles[userId] = { 
+      state: 'askingName',
+      // 初始化其他屬性
+      nickname: null,
+      gender: null,
+      age: null,
+      location: null,
+      ageGroup: null
+    };
+  }
+  
+  const profile = userProfiles[userId];
+  
+  // 根據當前狀態處理用戶輸入
+  switch (profile.state) {
+    case 'askingName':
+      // 解析用戶名字
+      profile.nickname = userInput.replace(/我是|我叫|叫我|稱呼我|我的名字是|名字|you can call me/gi, '').trim();
+      
+      // 嘗試根據名字猜測性別（僅為初步判斷，後續會確認）
+      const maleNameIndicators = ['先生', '男', '哥', '弟', '爸', 'boy', 'man', 'male', 'Mr'];
+      const femaleNameIndicators = ['女士', '小姐', '媽', '姐', '妹', 'girl', 'woman', 'female', 'Miss', 'Mrs', 'Ms'];
+      
+      let probableGender = null;
+      for (const indicator of maleNameIndicators) {
+        if (userInput.includes(indicator)) {
+          probableGender = '男性';
+          break;
+        }
+      }
+      
+      if (!probableGender) {
+        for (const indicator of femaleNameIndicators) {
+          if (userInput.includes(indicator)) {
+            probableGender = '女性';
+            break;
+          }
+        }
+      }
+      
+      profile.gender = probableGender; // 可能是null
+      profile.state = 'askingGender';
+      
+      // 根據是否已猜測性別返回不同的回應
+      if (probableGender) {
+        // 確認猜測的性別
+        await lineClient.replyMessage(replyToken, {
+          type: 'text',
+          text: `謝謝您，${profile.nickname}！我猜您是${probableGender}，對嗎？（請回答是/否）`
+        });
+      } else {
+        // 直接詢問性別
+        await lineClient.replyMessage(replyToken, {
+          type: 'text',
+          text: `謝謝您，${profile.nickname}！方便告訴我您的性別嗎？`
+        });
+      }
+      return true;
+      
+    case 'askingGender':
+      // 確認或取得性別
+      const maleKeywords = ['男', '先生', '男性', '爸爸', '哥哥', '弟弟', 'male', 'man', 'boy', 'yes', '是', '對', '沒錯'];
+      const femaleKeywords = ['女', '小姐', '女士', '女性', '媽媽', '姐姐', '妹妹', 'female', 'woman', 'girl'];
+      const otherKeywords = ['其他', '不方便', '不想', '不願', 'other', 'no', '否', '不是'];
+      
+      // 如果已有可能的性別，用戶可能是在確認
+      if (profile.gender) {
+        if (maleKeywords.some(k => userInput.toLowerCase().includes(k))) {
+          profile.gender = '男性';
+        } else if (femaleKeywords.some(k => userInput.toLowerCase().includes(k))) {
+          profile.gender = '女性';
+        } else if (otherKeywords.some(k => userInput.toLowerCase().includes(k))) {
+          // 如果否定了我們的猜測，詢問正確的性別
+          profile.gender = null;
+          await lineClient.replyMessage(replyToken, {
+            type: 'text',
+            text: `抱歉弄錯了！請問您的性別是？`
+          });
+          return true;
+        }
+      } else {
+        // 直接從回答中判斷性別
+        if (maleKeywords.some(k => userInput.toLowerCase().includes(k))) {
+          profile.gender = '男性';
+        } else if (femaleKeywords.some(k => userInput.toLowerCase().includes(k))) {
+          profile.gender = '女性';
+        } else if (otherKeywords.some(k => userInput.toLowerCase().includes(k))) {
+          profile.gender = '其他';
+        } else {
+          // 無法判斷，假設為"其他"
+          profile.gender = '其他';
+        }
+      }
+      
+      // 性別處理完畢，進入下一步
+      profile.state = 'askingAge';
+      await lineClient.replyMessage(replyToken, {
+        type: 'text',
+        text: `感謝您的回答！請問您的年齡大約是幾歲呢？（可以回答範圍，如20多歲、30-40歲）`
+      });
+      return true;
+      
+    case 'askingAge':
+      // 解析年齡
+      const ageMatches = userInput.match(/\d+/g);
+      if (ageMatches) {
+        // 如果用戶輸入包含數字，取第一個數字作為年齡
+        profile.age = parseInt(ageMatches[0]);
+      } else {
+        // 嘗試從文字描述中提取年齡範圍
+        if (userInput.includes('20多') || userInput.includes('二十多')) {
+          profile.age = 25;
+        } else if (userInput.includes('30多') || userInput.includes('三十多')) {
+          profile.age = 35;
+        } else if (userInput.includes('40多') || userInput.includes('四十多')) {
+          profile.age = 45;
+        } else if (userInput.includes('50多') || userInput.includes('五十多')) {
+          profile.age = 55;
+        } else if (userInput.includes('60多') || userInput.includes('六十多')) {
+          profile.age = 65;
+        } else if (userInput.includes('70') || userInput.includes('七十')) {
+          profile.age = 75;
+        } else if (userInput.includes('青少年') || userInput.includes('teen')) {
+          profile.age = 18;
+        } else {
+          // 無法判斷，設置為null
+          profile.age = null;
+        }
+      }
+      
+      // 設置年齡組別
+      if (profile.age) {
+        if (profile.age < 25) {
+          profile.ageGroup = 'young';
+        } else if (profile.age < 60) {
+          profile.ageGroup = 'adult';
+        } else {
+          profile.ageGroup = 'senior';
+        }
+      }
+      
+      // 完成資料收集
+      profile.state = 'complete';
+      
+      // 更新Firebase中的用戶資料
+      if (firebaseInitialized && db) {
+        try {
+          await db.collection('userProfiles').doc(userId).set({
+            nickname: profile.nickname,
+            gender: profile.gender,
+            age: profile.age,
+            ageGroup: profile.ageGroup,
+            lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+          console.log(`成功儲存用戶 ${userId} 的輪廓資訊`);
+        } catch (error) {
+          console.error(`儲存用戶輪廓資訊失敗:`, error);
+        }
+      }
+      
+      // 使用客製化稱呼
+      const greeting = getPersonalizedGreeting(profile);
+      
+      // 完成收集後的回應
+      await lineClient.replyMessage(replyToken, {
+        type: 'text',
+        text: `非常感謝您的分享，${greeting}！我現在可以為您提供更加個人化的健康建議了。\n\n您有什麼健康方面的問題想了解，或是對哪些保健品有興趣呢？😊`
+      });
+      return true;
+  }
+  
+  return false; // 不需要收集資料
+}
+
+// 獲取用戶資料
+async function getUserProfile(userId) {
+  // 內存中已有資料
+  if (userProfiles[userId] && userProfiles[userId].state === 'complete') {
+    return userProfiles[userId];
+  }
+  
+  // 從Firebase獲取
+  if (firebaseInitialized && db) {
+    try {
+      const doc = await db.collection('userProfiles').doc(userId).get();
+      if (doc.exists) {
+        const data = doc.data();
+        userProfiles[userId] = {
+          state: 'complete',
+          nickname: data.nickname,
+          gender: data.gender,
+          age: data.age,
+          location: data.location,
+          ageGroup: data.ageGroup
+        };
+        return userProfiles[userId];
+      }
+    } catch (error) {
+      console.error(`獲取用戶輪廓資訊失敗:`, error);
+    }
+  }
+  
+  // 返回空資料
+  return { state: 'askingName' };
+}
+
+// 獲取個人化稱呼
+function getPersonalizedGreeting(profile) {
+  if (!profile || !profile.state || profile.state !== 'complete') {
+    return '';
+  }
+  
+  let greeting = '';
+  
+  // 有暱稱優先使用暱稱
+  if (profile.nickname) {
+    greeting = profile.nickname;
+  }
+  
+  // 根據年齡和性別調整稱呼
+  if (profile.ageGroup) {
+    if (profile.ageGroup === 'young') {
+      // 年輕群體
+      if (profile.gender === '男性') {
+        greeting = greeting || '弟弟';
+      } else if (profile.gender === '女性') {
+        greeting = greeting || '妹妹';
+      }
+    } else if (profile.ageGroup === 'adult') {
+      // 成年群體
+      if (profile.gender === '男性') {
+        greeting = greeting || '先生';
+      } else if (profile.gender === '女性') {
+        greeting = greeting || '小姐';
+      }
+    } else if (profile.ageGroup === 'senior') {
+      // 銀髮族
+      if (profile.gender === '男性') {
+        greeting = greeting || '爸爸';
+      } else if (profile.gender === '女性') {
+        greeting = greeting || '媽媽';
+      }
+    }
+  }
+  
+  return greeting;
 }
 
 // 获取用户会话
