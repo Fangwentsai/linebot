@@ -99,23 +99,35 @@ const HEALTH_KEYWORDS = [
 // 產品圖像陣列
 const productImages = {
   '三高': [
-    'https://jhhealth.com.tw/wp-content/uploads/2022/07/bmep.jpg', 
-    'https://jhhealth.com.tw/wp-content/uploads/2022/07/bmep-plus.jpg',
+    'https://i.imgur.com/BzRufoL.jpg', 
+    'https://i.imgur.com/6hy2qjL.jpg',
     'https://i.imgur.com/uxcGK9O.jpg'  // 妥定 SBH 植萃複方圖像
   ],
   '疲勞': [
-    'https://jhhealth.com.tw/wp-content/uploads/2022/07/turmeric-king.jpg'
+    'https://i.imgur.com/aVXfbio.jpg'
   ],
   '腸胃': [
-    'https://jhhealth.com.tw/wp-content/uploads/2022/07/probiotic-warlords.jpg'
+    'https://i.imgur.com/4pxksTv.jpg'
   ],
   '關節': [
-    'https://jhhealth.com.tw/wp-content/uploads/2022/07/aos.jpg'
+    'https://i.imgur.com/hNQZszm.jpg'
   ],
   '體重': [
-    'https://jhhealth.com.tw/wp-content/uploads/2022/07/sirt.jpg'
+    'https://i.imgur.com/hfTXI9a.jpg'
   ]
 };
+
+// 產品網址對應表
+const productUrls = {
+  '三高': 'https://jhhealth.com.tw/product-category/health-biotech/blood-sugar-control/',
+  '疲勞': 'https://jhhealth.com.tw/product/turmeric-king/',
+  '腸胃': 'https://jhhealth.com.tw/product/probiotic-warlords/',
+  '關節': 'https://jhhealth.com.tw/product/aos/',
+  '體重': 'https://jhhealth.com.tw/product/sirt/'
+};
+
+// 已發送商品推薦的用戶記錄
+const userProductRecommendations = {};
 
 // 事件處理函數
 async function handleEvent(event) {
@@ -124,9 +136,22 @@ async function handleEvent(event) {
   }
 
   const userInput = event.message.text;
+  const userId = event.source.userId;
   console.log(`收到用戶輸入: ${userInput}`);
   
   try {
+    // 處理用戶對產品鏈接的請求
+    if (userProductRecommendations[userId] && 
+        (userInput.match(/^(好|可以|好的|請給我|是的|鏈接|連結|網址|官網|網站|購買|買|了解更多)/i))) {
+      const productType = userProductRecommendations[userId];
+      const productUrl = productUrls[productType] || 'https://jhhealth.com.tw/';
+      
+      return lineClient.replyMessage(event.replyToken, {
+        type: 'text',
+        text: `這是我們的${productType}產品連結，您可以點擊查看更多詳情和購買方式：\n\n${productUrl}\n\n如果有其他問題，隨時都可以問我喔！😊`
+      });
+    }
+    
     // 處理簡單問候
     if (userInput.match(/^(你好|哈囉|嗨|hi|hello)/i)) {
       return lineClient.replyMessage(event.replyToken, {
@@ -174,18 +199,6 @@ async function handleEvent(event) {
         text: careText
       });
       
-      // 延遲一秒後再發送產品推薦
-      setTimeout(async () => {
-        try {
-          await lineClient.pushMessage(event.source.userId, {
-            type: 'text',
-            text: productText
-          });
-        } catch (err) {
-          console.error('發送產品推薦失敗:', err);
-        }
-      }, 1000);
-      
       // 找出推薦的產品名稱
       let recommendedProduct = '';
       
@@ -205,38 +218,73 @@ async function handleEvent(event) {
         recommendedProduct = '體重';
       }
       
-      // 發送產品圖片(如果有)
+      // 記錄已向該用戶推薦的產品類型，用於後續處理鏈接請求
+      if (recommendedProduct) {
+        userProductRecommendations[userId] = recommendedProduct;
+      }
+      
+      // 延遲一秒後再發送產品推薦
+      setTimeout(async () => {
+        try {
+          await lineClient.pushMessage(event.source.userId, {
+            type: 'text',
+            text: productText + '\n\n請爸爸/媽媽參考一下，如果有需要我再提供網頁連結讓您參考😊'
+          });
+        } catch (err) {
+          console.error('發送產品推薦失敗:', err);
+        }
+      }, 1000);
+      
+      // 發送產品圖片(如果有)，使用輪播式訊息
       if (productImages[recommendedProduct] && productImages[recommendedProduct].length > 0) {
         setTimeout(async () => {
           try {
-            for (let i = 0; i < productImages[recommendedProduct].length; i++) {
-              const imageUrl = productImages[recommendedProduct][i];
+            // 如果有多張圖片，使用輪播訊息
+            if (productImages[recommendedProduct].length > 1) {
+              const columns = productImages[recommendedProduct].map(imageUrl => {
+                return {
+                  imageUrl: imageUrl,
+                  action: {
+                    type: 'message',
+                    label: '了解更多',
+                    text: '請給我產品連結'
+                  }
+                };
+              });
+              
+              await lineClient.pushMessage(event.source.userId, {
+                type: 'template',
+                altText: '產品圖片',
+                template: {
+                  type: 'image_carousel',
+                  columns: columns
+                }
+              });
+            } 
+            // 如果只有一張圖片，直接發送
+            else {
+              const imageUrl = productImages[recommendedProduct][0];
               await lineClient.pushMessage(event.source.userId, {
                 type: 'image',
                 originalContentUrl: imageUrl,
                 previewImageUrl: imageUrl
               });
-              // 等待0.5秒再發送下一張圖片
-              if (i < productImages[recommendedProduct].length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 500));
-              }
             }
           } catch (err) {
             console.error('發送圖片失敗:', err);
-          }
-        }, 2000);
-      }
-      // 舊版本的發送圖片代碼（保留作為備份）
-      else if (recommendedProduct) {
-        setTimeout(async () => {
-          try {
-            await lineClient.pushMessage(event.source.userId, {
-              type: 'image',
-              originalContentUrl: `https://jhhealth.com.tw/product-images/${recommendedProduct}.jpg`,
-              previewImageUrl: `https://jhhealth.com.tw/product-images/${recommendedProduct}-preview.jpg`
-            });
-          } catch (err) {
-            console.error('發送圖片失敗:', err);
+            // 嘗試使用單一圖片方式發送
+            try {
+              for (const imageUrl of productImages[recommendedProduct]) {
+                await lineClient.pushMessage(event.source.userId, {
+                  type: 'image',
+                  originalContentUrl: imageUrl,
+                  previewImageUrl: imageUrl
+                });
+                await new Promise(resolve => setTimeout(resolve, 500));
+              }
+            } catch (innerErr) {
+              console.error('備用方式發送圖片也失敗:', innerErr);
+            }
           }
         }, 2000);
       }
