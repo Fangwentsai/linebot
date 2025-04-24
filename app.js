@@ -174,10 +174,12 @@ async function handleEvent(event) {
   
   try {
     // 處理用戶對產品鏈接的請求
-    if (userInput.match(/^(好|可以|好的|請給我|是的|鏈接|連結|網址|官網|網站|購買|買|了解更多|賣場|想看|提供)/i) && 
+    if ((userInput.match(/^(好|可以|好的|請給我|是的|鏈接|連結|網址|官網|網站|購買|買|了解更多|賣場|想看|提供|網頁)/i) && 
         (userInput.includes('連結') || userInput.includes('鏈接') || userInput.includes('網址') || 
          userInput.includes('官網') || userInput.includes('網站') || userInput.includes('購買') || 
-         userInput.includes('賣場') || userInput.includes('商城'))) {
+         userInput.includes('賣場') || userInput.includes('商城'))) || 
+        userInput === '好的' || userInput === '網頁' || userInput === '好' || 
+        userInput === '連結' || userInput === '網址') {
       
       // 檢查是否有推薦過產品，如果有則提供該產品的連結
       if (userProductRecommendations[userId]) {
@@ -649,7 +651,8 @@ async function getWeatherInfo() {
           Authorization: CWA_API_KEY,
           format: 'JSON',
           locationName: '臺北市,新北市,桃園市,臺中市,臺南市,高雄市', // 主要城市
-          elementName: 'Wx,PoP,MinT,MaxT' // 天氣現象, 降雨機率, 最低溫度, 最高溫度
+          elementName: 'Wx,PoP,MinT,MaxT', // 天氣現象, 降雨機率, 最低溫度, 最高溫度
+          sort: 'time'
         },
         timeout: 10000, // 設定超時時間為10秒
       }
@@ -657,8 +660,8 @@ async function getWeatherInfo() {
 
     // 解析數據
     const data = response.data;
-    if (!data || !data.records || !data.records.location || data.records.location.length === 0) {
-      throw new Error('無法獲取天氣數據');
+    if (!data || !data.success || !data.records || !data.records.location || data.records.location.length === 0) {
+      throw new Error('無法獲取天氣數據或資料格式錯誤');
     }
 
     // 準備天氣信息
@@ -690,58 +693,71 @@ async function getWeatherInfo() {
         
         // 分析區域內各城市天氣數據
         cityData.forEach(city => {
-          // 天氣現象
-          const weatherDesc = city.weatherElement.find(el => el.elementName === 'Wx')
-            .time[0].parameter.parameterName;
-          weatherTypes[weatherDesc] = (weatherTypes[weatherDesc] || 0) + 1;
+          // 獲取第一個時間段的數據 (通常是最近的)
+          const weatherElement = city.weatherElement;
           
-          // 溫度
-          const minTemp = parseInt(city.weatherElement.find(el => el.elementName === 'MinT')
-            .time[0].parameter.parameterName);
-          const maxTemp = parseInt(city.weatherElement.find(el => el.elementName === 'MaxT')
-            .time[0].parameter.parameterName);
+          // 天氣現象 (Wx)
+          const wxElement = weatherElement.find(el => el.elementName === 'Wx');
+          if (wxElement && wxElement.time && wxElement.time.length > 0) {
+            const weatherDesc = wxElement.time[0].parameter.parameterName;
+            weatherTypes[weatherDesc] = (weatherTypes[weatherDesc] || 0) + 1;
+          }
           
-          regionMinTemp = Math.min(regionMinTemp, minTemp);
-          regionMaxTemp = Math.max(regionMaxTemp, maxTemp);
+          // 溫度 (MinT, MaxT)
+          const minTElement = weatherElement.find(el => el.elementName === 'MinT');
+          const maxTElement = weatherElement.find(el => el.elementName === 'MaxT');
           
-          overallMinTemp = Math.min(overallMinTemp, minTemp);
-          overallMaxTemp = Math.max(overallMaxTemp, maxTemp);
+          if (minTElement && minTElement.time && minTElement.time.length > 0) {
+            const minTemp = parseInt(minTElement.time[0].parameter.parameterName);
+            regionMinTemp = Math.min(regionMinTemp, minTemp);
+            overallMinTemp = Math.min(overallMinTemp, minTemp);
+          }
           
-          // 降雨機率
-          const rainProb = parseInt(city.weatherElement.find(el => el.elementName === 'PoP')
-            .time[0].parameter.parameterName);
-          maxRainProb = Math.max(maxRainProb, rainProb);
+          if (maxTElement && maxTElement.time && maxTElement.time.length > 0) {
+            const maxTemp = parseInt(maxTElement.time[0].parameter.parameterName);
+            regionMaxTemp = Math.max(regionMaxTemp, maxTemp);
+            overallMaxTemp = Math.max(overallMaxTemp, maxTemp);
+          }
+          
+          // 降雨機率 (PoP)
+          const popElement = weatherElement.find(el => el.elementName === 'PoP');
+          if (popElement && popElement.time && popElement.time.length > 0) {
+            const rainProb = parseInt(popElement.time[0].parameter.parameterName);
+            maxRainProb = Math.max(maxRainProb, rainProb);
+          }
         });
         
         // 獲取該區域最常見的天氣現象
-        const mostCommonWeather = Object.entries(weatherTypes)
-          .sort((a, b) => b[1] - a[1])[0][0];
-        
-        // 選擇天氣emoji
-        let weatherEmoji = '🌤️';
-        if (mostCommonWeather.includes('晴') && !mostCommonWeather.includes('雨')) {
-          weatherEmoji = '☀️';
-        } else if (mostCommonWeather.includes('雨')) {
-          weatherEmoji = '🌧️';
-        } else if (mostCommonWeather.includes('雲')) {
-          weatherEmoji = '☁️';
-        } else if (mostCommonWeather.includes('陰')) {
-          weatherEmoji = '🌥️';
-        } else if (mostCommonWeather.includes('雪')) {
-          weatherEmoji = '❄️';
-        } else if (mostCommonWeather.includes('霧')) {
-          weatherEmoji = '🌫️';
+        const weatherEntries = Object.entries(weatherTypes);
+        if (weatherEntries.length > 0) {
+          const mostCommonWeather = weatherEntries.sort((a, b) => b[1] - a[1])[0][0];
+          
+          // 選擇天氣emoji
+          let weatherEmoji = '🌤️';
+          if (mostCommonWeather.includes('晴') && !mostCommonWeather.includes('雨')) {
+            weatherEmoji = '☀️';
+          } else if (mostCommonWeather.includes('雨')) {
+            weatherEmoji = '🌧️';
+          } else if (mostCommonWeather.includes('雲')) {
+            weatherEmoji = '☁️';
+          } else if (mostCommonWeather.includes('陰')) {
+            weatherEmoji = '🌥️';
+          } else if (mostCommonWeather.includes('雪')) {
+            weatherEmoji = '❄️';
+          } else if (mostCommonWeather.includes('霧')) {
+            weatherEmoji = '🌫️';
+          }
+          
+          // 添加區域天氣摘要
+          weatherSummary += `${weatherEmoji} ${region}: ${mostCommonWeather}, ${regionMinTemp}°C-${regionMaxTemp}°C`;
+          
+          // 添加降雨機率(如果有顯著機率)
+          if (maxRainProb >= 30) {
+            weatherSummary += `, 降雨機率${maxRainProb}%`;
+          }
+          
+          weatherSummary += '\n';
         }
-        
-        // 添加區域天氣摘要
-        weatherSummary += `${weatherEmoji} ${region}: ${mostCommonWeather}, ${regionMinTemp}°C-${regionMaxTemp}°C`;
-        
-        // 添加降雨機率(如果有顯著機率)
-        if (maxRainProb >= 30) {
-          weatherSummary += `, 降雨機率${maxRainProb}%`;
-        }
-        
-        weatherSummary += '\n';
       }
     }
     
