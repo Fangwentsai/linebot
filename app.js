@@ -932,9 +932,15 @@ async function getWeatherInfo() {
     console.log('正在獲取天氣信息...');
     console.log(`使用API金鑰: ${CWA_API_KEY}`);
     
+    // 使用HTTPS模式和備用域名
+    // 優先使用opendata.cwb.gov.tw而不是opendata.cwa.gov.tw
+    const apiUrl = 'https://opendata.cwb.gov.tw/api/v1/rest/datastore/F-C0032-001';
+    
+    console.log(`天氣API請求URL: ${apiUrl}`);
+    
     // 獲取全臺天氣預報 (F-C0032-001)
     const response = await axios.get(
-      'https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0032-001',
+      apiUrl,
       {
         params: {
           Authorization: CWA_API_KEY,
@@ -944,6 +950,9 @@ async function getWeatherInfo() {
           sort: 'time'
         },
         timeout: 10000, // 設定超時時間為10秒
+        headers: {
+          'User-Agent': 'LineBot/1.0'
+        }
       }
     );
     
@@ -1083,6 +1092,33 @@ async function getWeatherInfo() {
     return weatherSummary;
   } catch (error) {
     console.error('獲取天氣信息失敗:', error);
+    
+    // 嘗試備用API接口
+    try {
+      console.log('嘗試使用備用API獲取天氣信息...');
+      const backupResponse = await axios.get(
+        'https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0032-001',
+        {
+          params: {
+            Authorization: CWA_API_KEY,
+            format: 'JSON',
+            locationName: '臺北市',
+            elementName: 'Wx,MinT,MaxT'
+          },
+          timeout: 10000,
+          headers: {
+            'User-Agent': 'LineBot/1.0'
+          }
+        }
+      );
+      
+      if (backupResponse.status === 200 && backupResponse.data && backupResponse.data.success) {
+        console.log('備用API成功獲取天氣信息');
+        return '📅 今日天氣適宜，建議保持良好作息，多喝水，維持健康生活！';
+      }
+    } catch (backupError) {
+      console.error('備用API也失敗:', backupError);
+    }
     
     // 針對不同錯誤類型提供更具體的處理
     if (error.code === 'ENOTFOUND' || error.code === 'EAI_AGAIN') {
