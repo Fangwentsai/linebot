@@ -5,6 +5,7 @@ const OpenAI = require('openai');
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
+const csv = require('csv-parser'); // 新增CSV解析套件
 
 // 初始化Firebase
 const admin = require('firebase-admin');
@@ -44,7 +45,7 @@ try {
     firebaseInitialized = true;
   }
   console.log('Firebase初始化成功');
-} catch (error) {
+  } catch (error) {
   console.error('Firebase初始化失敗:', error.message);
   console.log('將使用内存存儲會話數據');
 }
@@ -253,6 +254,87 @@ const productUrls = {
   '官網': 'https://jhhealth.com.tw/'
 };
 
+// 詐騙關鍵詞
+const FRAUD_KEYWORDS = [
+  // 投資詐騙關鍵詞
+  '投資', '穩賺', '高報酬', '保證獲利', '配息', '股票', '基金', '虛擬貨幣', '比特幣', '挖礦', '秘方',
+  // 求職詐騙關鍵詞
+  '求職', '工作', '打工', '兼職', '在家工作', '遠端工作', '賺錢容易', '賺錢快速', '代工', '工讀',
+  // 交友詐騙關鍵詞
+  '交友', '網戀', '男友', '女友', '約會', '緣分', '手握緣分', '莫逆', '有緣千里來相會',
+  // 網購詐騙關鍵詞
+  '網購', '團購', '便宜', '限時', '搶購', '特價', '免運費', '賠售', '下單', '匯款',
+  // 個資詐騙關鍵詞
+  '個資', '資料外洩', '中獎', '領獎', '發票', '對獎', '核對', '中樂透',
+  // 一般詐騙指示關鍵詞
+  '匯款', '儲值', '轉帳', '代付', '墊付', '提款', '現金', '匯入', '解除分期',
+  // 防詐關鍵詞
+  '詐騙', '被騙', '165', '反詐', '防詐', '報案', '165專線'
+];
+
+// 詐騙類型分類
+const FRAUD_TYPES = {
+  '假投資詐騙': ['投資', '股票', '基金', '虛擬貨幣', '比特幣', '保證獲利', '穩賺', '高報酬', '挖礦', '配息'],
+  '假求職': ['求職', '工作', '打工', '兼職', '在家工作', '遠端工作', '賺錢容易', '賺錢快速', '代工', '工讀'],
+  '假交友': ['交友', '網戀', '男友', '女友', '約會', '緣分', '莫逆', '交往', '戀愛'],
+  '網路購物詐騙': ['網購', '團購', '便宜', '限時', '搶購', '特價', '免運費', '賠售', '下單', '匯款']
+};
+
+// 讀取詐騙案例
+let fraudCases = [];
+const csvFilePath = path.join(__dirname, '165dashboard_yesterday_data.csv');
+
+// 加載詐騙案例函數
+function loadFraudCases() {
+  if (!fs.existsSync(csvFilePath)) {
+    console.log('詐騙案例檔案不存在：', csvFilePath);
+    return;
+  }
+  
+  const results = [];
+  fs.createReadStream(csvFilePath)
+    .pipe(csv())
+    .on('data', (data) => results.push(data))
+    .on('end', () => {
+      fraudCases = results.filter(c => c.標題 !== '無標題' && c.內容 !== '無內容');
+      console.log(`成功載入 ${fraudCases.length} 個詐騙案例`);
+    })
+    .on('error', (error) => {
+      console.error('讀取詐騙案例檔案失敗:', error);
+      // 嘗試使用替代方法讀取
+      try {
+        const fileContent = fs.readFileSync(csvFilePath, 'utf8');
+        const lines = fileContent.split('\n');
+        // 忽略標題行
+        for (let i = 1; i < lines.length; i++) {
+          if (lines[i].trim() === '') continue;
+          
+          const parts = lines[i].split(',');
+          if (parts.length >= 3) {
+            const date = parts[0];
+            const title = parts[1];
+            // 因為內容可能包含逗號，所以從第三個部分開始的所有內容都視為案例內容
+            const content = parts.slice(2).join(',');
+            
+            if (title !== '無標題' && content !== '無內容') {
+              fraudCases.push({
+                '日期': date,
+                '標題': title,
+                '內容': content
+              });
+            }
+          }
+        }
+        console.log(`使用替代方法成功載入 ${fraudCases.length} 個詐騙案例`);
+      } catch (err) {
+        console.error('替代讀取方法也失敗:', err);
+      }
+    });
+}
+
+// 嘗試載入詐騙案例
+loadFraudCases();
+
 // 已發送商品推薦的用戶記錄
 const userProductRecommendations = {};
 
@@ -363,8 +445,8 @@ async function handleEvent(event) {
         // 保存对话历史
         await updateUserSession(userId, userSession.messages);
         
-        return lineClient.replyMessage(event.replyToken, {
-          type: 'text',
+      return lineClient.replyMessage(event.replyToken, {
+        type: 'text',
           text: `這是晶璽健康的官方商城，${greeting}可以瀏覽所有產品：\n\n${productUrls['賣場']}\n\n🚚 全館滿2,000即享免運服務，東西直接送到家！😊\n\n${greeting}有特定想了解的健康需求嗎？我可以為您推薦最適合的產品！😊`
         });
       }
@@ -419,16 +501,105 @@ async function handleEvent(event) {
       }
     }
     
+    // 檢查是否是詐騙相關查詢
+    if (isFraudQuery(userInput)) {
+      console.log(`詐騙相關查詢: ${userInput}`);
+      
+      // 使用OpenAI解析用戶詐騙問題的具體類型
+      const fraudTypeResponse = await openai.chat.completions.create({
+        model: GPT_MODEL,
+        messages: [
+          {
+            role: "system",
+            content: `你是一位專業的防詐騙顧問。請仔細分析用戶的問題，並判斷他們可能面臨的詐騙類型。
+僅從以下選項中選擇一個最相關的類型：
+1. 假投資詐騙
+2. 假求職
+3. 假交友
+4. 網路購物詐騙
+5. 其他詐騙類型
+
+只回覆類型名稱，不要添加任何其他文字。`
+          },
+          {
+            role: "user",
+            content: userInput
+          }
+        ],
+        temperature: 0.3,
+        max_tokens: 10
+      });
+      
+      const fraudType = fraudTypeResponse.choices[0].message.content.trim();
+      console.log(`判斷詐騙類型: ${fraudType}`);
+      
+      // 根據詐騙類型獲取相關案例
+      const relatedCases = getRelatedFraudCases(fraudType, 2);
+      
+      // 生成防詐騙建議
+      const antifraudResponse = await openai.chat.completions.create({
+        model: GPT_MODEL,
+        messages: [
+          {
+            role: "system",
+            content: `你是「小晶」，一位專業的防詐騙顧問。用戶正在詢問關於${fraudType}的問題。
+請提供一段專業、有溫度的回應，內容包含：
+1. 對用戶情況的關心與理解(約50字)
+2. 針對${fraudType}的辨識方法(約100字)
+3. 如何預防此類詐騙的具體建議(約100字)
+
+語氣要溫暖專業，表現出對用戶的關心，使用適度的emoji表情符號增加親和力。
+請確保建議是具體可行的，並提醒用戶可以撥打165反詐騙專線尋求協助。`
+          },
+          {
+            role: "user",
+            content: userInput
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 500
+      });
+      
+      const antifraudAdvice = antifraudResponse.choices[0].message.content;
+      
+      // 構建案例分享文本
+      let caseSharingText = "";
+      if (relatedCases.length > 0) {
+        caseSharingText = `\n\n【近期相關詐騙案例分享】\n`;
+        relatedCases.forEach((c, index) => {
+          caseSharingText += `\n案例${index+1}：\n${c.內容.substring(0, 300)}${c.內容.length > 300 ? '...' : ''}\n`;
+        });
+        caseSharingText += `\n以上案例是否跟您遇到的情況類似？如果有類似情形請提高警覺，有任何疑問都可以隨時向我詢問。`;
+      }
+      
+      // 構建完整回覆
+      const fullResponse = antifraudAdvice + caseSharingText;
+      
+      // 更新对话历史
+      userSession.messages.push({
+        role: "assistant",
+        content: fullResponse
+      });
+      
+      // 保存对话历史
+      await updateUserSession(userId, userSession.messages);
+      
+      return lineClient.replyMessage(event.replyToken, {
+        type: 'text',
+        text: fullResponse
+      });
+    }
+    
     // 檢查是否是產品查詢
     if (isProductQuery(userInput)) {
       console.log(`產品查詢: ${userInput}`);
       
       // 第一步：使用OpenAI生成關懷回應
       const careResponse = await openai.chat.completions.create({
-        model: GPT_MODEL,
-        messages: [
-          {
-            role: "system",
+      model: GPT_MODEL,
+      messages: [
+        {
+          role: "system",
             content: `你是「小晶」，晶璽健康的專業AI保健顧問。用戶即將詢問健康問題。
 請提供大約50-70字左右的溫暖關懷回應，內容應包含：
 1. 簡短的健康建議
@@ -438,12 +609,12 @@ async function handleEvent(event) {
 語氣要親切活潑，多使用emoji表情符號增加親和力，如：😊 💪 ✨ 🌿 💡。
 自稱「小晶」，像位親切的朋友給予建議。
 不要推薦任何產品，只關注健康建議和關懷。保持簡潔。`
-          },
-          {
-            role: "user",
-            content: userInput
-          }
-        ],
+        },
+        {
+          role: "user",
+          content: userInput
+        }
+      ],
         temperature: 0.7,
         max_tokens: 200
       });
@@ -555,7 +726,7 @@ ${userProfile.location ? `地區: ${userProfile.location}` : ''}
     
     // 更新Firestore中的会话
     await updateUserSession(userId, userSession.messages);
-    
+
     return lineClient.replyMessage(event.replyToken, {
       type: 'text',
       text: response.choices[0].message.content
@@ -854,7 +1025,7 @@ async function getUserSession(userId) {
     } catch (error) {
       console.error(`從Firestore獲取用戶 ${userId} 會話失敗:`, error);
       // 返回默认会话，避免错误影响用户体验
-      return {
+    return {
         messages: [{ role: "system", content: getSystemPrompt() }],
         lastActive: new Date()
       };
@@ -969,8 +1140,11 @@ function getSystemPrompt() {
     `產品名稱: ${p.name}\n類別: ${p.categories.join(', ')}\n特點: ${p.features.join('; ')}`
   ).join('\n\n');
   
-  return `你是「小晶」，晶璽健康（JH Health）的專業保健品顧問，擁有豐富的營養和保健知識。
-你的職責是了解用戶的健康需求，並從晶璽健康的產品中提供最適合的推薦。
+  return `你是「小晶」，晶璽健康（JH Health）的專業AI顧問，擁有豐富的營養、保健和防詐騙知識。
+你的職責是了解用戶的需求，並根據不同的查詢提供相應的服務：
+
+1. 健康保健顧問：提供營養建議和推薦適合的保健產品
+2. 防詐騙顧問：提供防詐騙建議和案例分享
 
 個性特點：
 1. 親切友善，像朋友般交流
@@ -978,13 +1152,17 @@ function getSystemPrompt() {
 3. 活潑開朗，使用emoji增加對話活力
 4. 自稱「小晶」，建立親密感
 
-你應該：
+健康保健顧問角色時，你應該：
 1. 用專業但親切的語氣回答問題
 2. 了解用戶的健康需求和症狀
 3. 根據用戶需求推薦適合的產品
 4. 提供科學的保健知識和建議
-5. 適當使用emoji表情符號增加親和力(如：😊 💪 ✨ 🌿 💡 等)
-6. 在合適的時機提到自己是「小晶」
+
+防詐騙顧問角色時，你應該：
+1. 用專業、穩重的語氣進行溝通
+2. 表達對用戶處境的關心和理解
+3. 提供具體的防詐騙方法和建議
+4. 分享相關詐騙案例，幫助用戶辨識風險
 
 避免：
 1. 做出醫療診斷或治療建議
@@ -995,7 +1173,7 @@ function getSystemPrompt() {
 晶璽健康的產品資訊：
 ${productSummary}
 
-請以專業健康顧問的身份，協助用戶找到最適合的保健品。`;
+請根據用戶的問題，適時切換角色，提供最專業、最適合的建議。`;
 }
 
 // 判斷是否為產品查詢的函數
@@ -1477,3 +1655,52 @@ const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`服務器已啟動，監聽端口 ${port}`);
 });
+
+// 判斷是否為詐騙查詢
+function isFraudQuery(input) {
+  return FRAUD_KEYWORDS.some(keyword => input.includes(keyword));
+}
+
+// 取得相關詐騙案例
+function getRelatedFraudCases(fraudType, count = 2) {
+  // 檢查詐騙案例是否已載入
+  if (fraudCases.length === 0) {
+    console.log('警告：詐騙案例尚未載入');
+    return [];
+  }
+  
+  // 根據詐騙類型篩選案例
+  const typeRelatedCases = fraudCases.filter(c => c.標題 === fraudType);
+  
+  // 如果找不到該類型的案例，則返回任意案例
+  if (typeRelatedCases.length === 0) {
+    console.log(`找不到${fraudType}類型的案例，返回隨機案例`);
+    // 篩選有效案例
+    const validCases = fraudCases.filter(c => c.標題 !== '無標題' && c.內容 !== '無內容');
+    // 隨機選擇案例
+    const randomCases = [];
+    for (let i = 0; i < Math.min(count, validCases.length); i++) {
+      const randomIndex = Math.floor(Math.random() * validCases.length);
+      randomCases.push(validCases[randomIndex]);
+      // 避免重複選擇同一個案例
+      validCases.splice(randomIndex, 1);
+    }
+    return randomCases;
+  }
+  
+  // 如果案例不足，則返回所有找到的案例
+  if (typeRelatedCases.length <= count) {
+    return typeRelatedCases;
+  }
+  
+  // 隨機選擇指定數量的案例
+  const selectedCases = [];
+  const casesCopy = [...typeRelatedCases];
+  for (let i = 0; i < count; i++) {
+    const randomIndex = Math.floor(Math.random() * casesCopy.length);
+    selectedCases.push(casesCopy[randomIndex]);
+    casesCopy.splice(randomIndex, 1);
+  }
+  
+  return selectedCases;
+}
