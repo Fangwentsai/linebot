@@ -932,9 +932,8 @@ async function getWeatherInfo() {
     console.log('正在獲取天氣信息...');
     console.log(`使用API金鑰: ${CWA_API_KEY}`);
     
-    // 使用HTTPS模式和備用域名
-    // 優先使用opendata.cwb.gov.tw而不是opendata.cwa.gov.tw
-    const apiUrl = 'https://opendata.cwb.gov.tw/api/v1/rest/datastore/F-C0032-001';
+    // 使用正確的CWA網址
+    const apiUrl = 'https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0032-001';
     
     console.log(`天氣API請求URL: ${apiUrl}`);
     
@@ -949,15 +948,19 @@ async function getWeatherInfo() {
           elementName: 'Wx,PoP,MinT,MaxT', // 天氣現象, 降雨機率, 最低溫度, 最高溫度
           sort: 'time'
         },
-        timeout: 10000, // 設定超時時間為10秒
+        timeout: 15000, // 延長超時時間為15秒
         headers: {
-          'User-Agent': 'LineBot/1.0'
-        }
+          'accept': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        },
+        // 代理設置
+        proxy: false
       }
     );
     
     console.log('成功獲取天氣數據');
     console.log('天氣數據狀態碼:', response.status);
+    console.log('天氣數據樣本:', JSON.stringify(response.data).substr(0, 200) + '...');
     
     // 如果API金鑰無效，這裡會返回401錯誤
     if (response.status !== 200) {
@@ -1093,31 +1096,50 @@ async function getWeatherInfo() {
   } catch (error) {
     console.error('獲取天氣信息失敗:', error);
     
-    // 嘗試備用API接口
+    // 使用curl命令格式的備用方法
     try {
-      console.log('嘗試使用備用API獲取天氣信息...');
-      const backupResponse = await axios.get(
-        'https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0032-001',
-        {
-          params: {
-            Authorization: CWA_API_KEY,
-            format: 'JSON',
-            locationName: '臺北市',
-            elementName: 'Wx,MinT,MaxT'
-          },
-          timeout: 10000,
-          headers: {
-            'User-Agent': 'LineBot/1.0'
-          }
-        }
-      );
+      console.log('嘗試使用備用簡化方法獲取天氣信息...');
+      
+      // 只請求臺北市資料，減少資料量
+      const simpleUrl = `https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0032-001?Authorization=${CWA_API_KEY}&format=JSON&locationName=臺北市&elementName=MinT,MaxT`;
+      
+      console.log(`備用API請求URL: ${simpleUrl}`);
+      
+      const backupResponse = await axios.get(simpleUrl, {
+        headers: {
+          'accept': 'application/json',
+          'User-Agent': 'Mozilla/5.0'
+        },
+        timeout: 10000
+      });
       
       if (backupResponse.status === 200 && backupResponse.data && backupResponse.data.success) {
-        console.log('備用API成功獲取天氣信息');
-        return '📅 今日天氣適宜，建議保持良好作息，多喝水，維持健康生活！';
+        console.log('備用簡化方法成功獲取天氣信息');
+        
+        // 解析簡化天氣數據
+        const data = backupResponse.data;
+        if (data.records && data.records.location && data.records.location[0]) {
+          const tpe = data.records.location[0];
+          let minTemp = '?';
+          let maxTemp = '?';
+          
+          const weatherElements = tpe.weatherElement || [];
+          for (const element of weatherElements) {
+            if (element.elementName === 'MinT' && element.time && element.time[0]) {
+              minTemp = element.time[0].parameter.parameterName;
+            }
+            if (element.elementName === 'MaxT' && element.time && element.time[0]) {
+              maxTemp = element.time[0].parameter.parameterName;
+            }
+          }
+          
+          return `📅 今日臺北市氣溫${minTemp}°C - ${maxTemp}°C，建議保持良好作息，多喝水，維持健康生活！`;
+        }
+        
+        return '📅 今日天氣舒適，建議保持良好作息，多喝水，維持健康生活！';
       }
     } catch (backupError) {
-      console.error('備用API也失敗:', backupError);
+      console.error('備用簡化方法也失敗:', backupError);
     }
     
     // 針對不同錯誤類型提供更具體的處理
