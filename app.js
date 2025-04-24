@@ -5,6 +5,8 @@ const OpenAI = require('openai');
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
+
+/* 暂时注释Firebase相关代码，等服务账号配置好后再启用
 const admin = require('firebase-admin');
 const serviceAccount = require('./path-to-your-service-account.json');
 
@@ -13,6 +15,7 @@ admin.initializeApp({
 });
 
 const db = admin.firestore();
+*/
 
 // 定義常量
 const GPT_MODEL = "gpt-4o-mini";
@@ -144,62 +147,229 @@ const productUrls = {
 // 已發送商品推薦的用戶記錄
 const userProductRecommendations = {};
 
+// 用于存储用户会话的内存对象(临时替代Firebase)
+const userSessions = {};
+
 // 事件處理函數
 async function handleEvent(event) {
+  // 處理用戶加入好友事件
+  if (event.type === 'follow') {
+    // 發送歡迎詞
+    return lineClient.replyMessage(event.replyToken, {
+      type: 'text',
+      text: `嗨～👋 感謝{Nickname}爸爸/媽媽加入小晶為好友！
+
+我是晶璽健康的專業AI保健顧問「小晶」✨，很高興認識您！
+
+【我能為您做什麼】
+✅ 提供專業保健知識
+✅ 針對您的健康需求給予建議
+✅ 推薦適合您的晶璽健康產品
+✅ 回答產品相關問題
+
+您可以直接問我關於：
+💡 三高問題的調理方式
+💡 腸胃保健的方法
+💡 關節保養的建議
+💡 提升精力的秘訣
+💡 體重管理的方案
+
+只要告訴我您的健康需求，我就能提供最適合的建議喔！😊
+
+現在，有什麼我能幫您的嗎？`
+    });
+  }
+  
   if (event.type !== 'message' || event.message.type !== 'text') {
     return Promise.resolve(null);
   }
 
-  const userId = event.source.userId;
   const userInput = event.message.text;
+  const userId = event.source.userId;
+  console.log(`收到用戶輸入: ${userInput}`);
   
   try {
-    // 获取用户会话
-    const userSession = await getUserSession(userId);
+    // 初始化用户会话或获取现有会话(临时使用内存存储)
+    if (!userSessions[userId]) {
+      userSessions[userId] = {
+        messages: [
+          { role: "system", content: getSystemPrompt() }
+        ],
+        lastActive: new Date()
+      };
+    }
     
-    // 添加用户消息
-    userSession.messages.push({
+    // 添加用户消息到历史记录
+    userSessions[userId].messages.push({
       role: "user",
       content: userInput
     });
     
-    // 处理产品查询和普通查询...
-    // (原有的查询处理逻辑)
+    // 更新最后交互时间
+    userSessions[userId].lastActive = new Date();
     
-    // 对于普通对话，调用OpenAI API
+    // 處理用戶對產品鏈接的請求
+    if ((userInput.match(/^(好|可以|好的|請給我|是的|鏈接|連結|網址|官網|網站|購買|買|了解更多|賣場|想看|提供|網頁)/i) && 
+        (userInput.includes('連結') || userInput.includes('鏈接') || userInput.includes('網址') || 
+         userInput.includes('官網') || userInput.includes('網站') || userInput.includes('購買') || 
+         userInput.includes('賣場') || userInput.includes('商城'))) || 
+        userInput === '好的' || userInput === '網頁' || userInput === '好' || 
+        userInput === '連結' || userInput === '網址') {
+      
+      // 檢查是否有推薦過產品，如果有則提供該產品的連結
+      if (userProductRecommendations[userId]) {
+        const productType = userProductRecommendations[userId];
+        const productUrl = productUrls[productType] || 'https://jhhealth.com.tw/';
+        
+        return lineClient.replyMessage(event.replyToken, {
+          type: 'text',
+          text: `這是我們的${productType}產品連結，您可以點擊查看更多詳情和購買方式：\n\n${productUrl}\n\n🚚 全館滿2,000即享免運服務，東西直接送到家！😊\n\n如果有其他問題，隨時都可以問我喔！😊`
+        });
+      } 
+      // 沒有推薦過產品，提供通用賣場連結
+      else {
+        return lineClient.replyMessage(event.replyToken, {
+          type: 'text',
+          text: `這是晶璽健康的官方商城，您可以瀏覽所有產品：\n\n${productUrls['賣場']}\n\n🚚 全館滿2,000即享免運服務，東西直接送到家！😊\n\n您有特定想了解的健康需求嗎？我可以為您推薦最適合的產品！😊`
+        });
+      }
+    }
+    
+    // 處理簡單問候
+    if (userInput.match(/^(你好|哈囉|嗨|hi|hello)/i)) {
+      try {
+        // 獲取天氣數據
+        const weatherInfo = await getWeatherInfo();
+        
+        return lineClient.replyMessage(event.replyToken, {
+          type: 'text',
+          text: `你好！👋 我是「小晶」，晶璽健康的專業AI諮詢員 ✨\n\n${weatherInfo}\n\n很高興為您服務！我可以為您介紹各種保健品知識，並根據您的需求推薦最適合的產品。\n\n有什麼保健需求想了解的嗎？😊`
+        });
+      } catch (error) {
+        console.error('獲取天氣信息失敗:', error);
+        // 如果無法獲取天氣，仍然返回問候
+      return lineClient.replyMessage(event.replyToken, {
+          type: 'text',
+          text: `你好！👋 我是「小晶」，晶璽健康的專業AI諮詢員 ✨\n\n很高興為您服務！我可以為您介紹各種保健品知識，並根據您的需求推薦最適合的產品。\n\n有什麼保健需求想了解的嗎？😊`
+        });
+      }
+    }
+    
+    // 檢查是否是產品查詢
+    if (isProductQuery(userInput)) {
+      console.log(`產品查詢: ${userInput}`);
+      
+      // 第一步：使用OpenAI生成關懷回應
+      const careResponse = await openai.chat.completions.create({
+        model: GPT_MODEL,
+        messages: [
+          {
+            role: "system",
+            content: `你是「小晶」，晶璽健康的專業AI保健顧問。用戶即將詢問健康問題。
+請提供大約50-70字左右的溫暖關懷回應，內容應包含：
+1. 簡短的健康建議
+2. 日常照顧提醒
+3. 鼓勵性的話語
+
+語氣要親切活潑，多使用emoji表情符號增加親和力，如：😊 💪 ✨ 🌿 💡。
+自稱「小晶」，像位親切的朋友給予建議。
+不要推薦任何產品，只關注健康建議和關懷。保持簡潔。`
+          },
+          {
+            role: "user",
+            content: userInput
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 200
+      });
+      
+      // 第二步：附加產品推薦
+      const careText = careResponse.choices[0].message.content;
+      const productText = getDirectRecommendation(userInput);
+      
+      // 先發送關懷回應
+      await lineClient.replyMessage(event.replyToken, {
+        type: 'text',
+        text: careText
+      });
+      
+      // 找出推薦的產品名稱
+      let recommendedProduct = '';
+      
+      if (userInput.includes('三高')) {
+        recommendedProduct = '三高';
+      }
+      else if (userInput.includes('疲勞') || userInput.includes('機能強化')) {
+        recommendedProduct = '疲勞';
+      }
+      else if (userInput.includes('腸胃')) {
+        recommendedProduct = '腸胃';
+      }
+      else if (userInput.includes('關節')) {
+        recommendedProduct = '關節';
+      }
+      else if (userInput.includes('體重')) {
+        recommendedProduct = '體重';
+      }
+      
+      // 記錄已向該用戶推薦的產品類型，用於後續處理鏈接請求
+      if (recommendedProduct) {
+        userProductRecommendations[userId] = recommendedProduct;
+      }
+      
+      // 延遲一秒後再發送產品推薦
+      setTimeout(async () => {
+        try {
+          await lineClient.pushMessage(event.source.userId, {
+            type: 'text',
+            text: productText + '\n\n請爸爸/媽媽參考一下，如果有需要我再提供網頁連結讓您參考😊'
+          });
+        } catch (err) {
+          console.error('發送產品推薦失敗:', err);
+        }
+      }, 1000);
+      
+      return;
+    }
+    
+    // 一般對話處理，使用会话历史
     const response = await openai.chat.completions.create({
       model: GPT_MODEL,
-      messages: userSession.messages,
+      messages: userSessions[userId].messages,
       temperature: 0.7
     });
-    
+
     // 将AI回复添加到会话历史
-    userSession.messages.push({
+    userSessions[userId].messages.push({
       role: "assistant",
       content: response.choices[0].message.content
     });
     
     // 如果消息太多，裁剪会话
-    if (userSession.messages.length > 20) {
-      userSession.messages = [
-        userSession.messages[0], // 保留系统提示
-        ...userSession.messages.slice(-19) // 保留最近19条消息
+    if (userSessions[userId].messages.length > 20) {
+      userSessions[userId].messages = [
+        userSessions[userId].messages[0], // 保留系统提示
+        ...userSessions[userId].messages.slice(-19) // 保留最近19条消息
       ];
     }
-    
-    // 更新Firestore中的会话
-    await updateUserSession(userId, userSession.messages);
-    
-    // 回复用户
-        return lineClient.replyMessage(event.replyToken, {
-          type: 'text',
+
+    return lineClient.replyMessage(event.replyToken, {
+      type: 'text',
       text: response.choices[0].message.content
-        });
+    });
   } catch (error) {
-    console.error('处理消息失败:', error);
+    console.error('處理事件時發生錯誤:', error);
+    // 如果錯誤是產品查詢，嘗試直接推薦
+    if (isProductQuery(userInput)) {
       return lineClient.replyMessage(event.replyToken, {
         type: 'text',
-      text: '抱歉，处理您的请求时出现了问题，请稍后再试。'
+        text: "抱歉，我現在遇到了一些技術問題。" + getDirectRecommendation(userInput)
+      });
+    }
+    return lineClient.replyMessage(event.replyToken, {
+      type: 'text',
+      text: '抱歉，系統發生錯誤。請稍後再試。'
     });
   }
 }
@@ -643,68 +813,6 @@ async function getWeatherInfo() {
     
     // 默認返回信息
     return '抱歉，目前無法獲取天氣信息。您可以直接詢問我有關健康產品的問題！';
-  }
-}
-
-// 获取用户会话
-async function getUserSession(userId) {
-  try {
-    const doc = await db.collection('sessions').doc(userId).get();
-    if (doc.exists) {
-      return doc.data();
-    } else {
-      // 新用户，创建默认会话
-      const defaultSession = {
-        messages: [
-          { role: "system", content: getSystemPrompt() }
-        ],
-        lastActive: admin.firestore.FieldValue.serverTimestamp()
-      };
-      await db.collection('sessions').doc(userId).set(defaultSession);
-      return defaultSession;
-    }
-  } catch (error) {
-    console.error('获取用户会话失败:', error);
-    // 返回默认会话，避免错误影响用户体验
-    return {
-      messages: [{ role: "system", content: getSystemPrompt() }],
-      lastActive: new Date()
-    };
-  }
-}
-
-// 更新用户会话
-async function updateUserSession(userId, messages) {
-  try {
-    await db.collection('sessions').doc(userId).update({
-      messages: messages,
-      lastActive: admin.firestore.FieldValue.serverTimestamp()
-    });
-  } catch (error) {
-    console.error('更新用户会话失败:', error);
-  }
-}
-
-// 清理长时间不活跃的会话，可以定期运行
-async function cleanupOldSessions() {
-  try {
-    // 计算30天前的时间戳
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - 30);
-    
-    const oldSessions = await db.collection('sessions')
-      .where('lastActive', '<', cutoffDate)
-      .get();
-      
-    const batch = db.batch();
-    oldSessions.forEach(doc => {
-      batch.delete(doc.ref);
-    });
-    
-    await batch.commit();
-    console.log(`清理了 ${oldSessions.size} 个过期会话`);
-  } catch (error) {
-    console.error('清理旧会话失败:', error);
   }
 }
 
