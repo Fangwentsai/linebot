@@ -96,6 +96,27 @@ const HEALTH_KEYWORDS = [
   '青少年', '女性', '男性'
 ];
 
+// 產品圖像陣列
+const productImages = {
+  '三高': [
+    'https://jhhealth.com.tw/wp-content/uploads/2022/07/bmep.jpg', 
+    'https://jhhealth.com.tw/wp-content/uploads/2022/07/bmep-plus.jpg',
+    'https://i.imgur.com/uxcGK9O.jpg'  // 妥定 SBH 植萃複方圖像
+  ],
+  '疲勞': [
+    'https://jhhealth.com.tw/wp-content/uploads/2022/07/turmeric-king.jpg'
+  ],
+  '腸胃': [
+    'https://jhhealth.com.tw/wp-content/uploads/2022/07/probiotic-warlords.jpg'
+  ],
+  '關節': [
+    'https://jhhealth.com.tw/wp-content/uploads/2022/07/aos.jpg'
+  ],
+  '體重': [
+    'https://jhhealth.com.tw/wp-content/uploads/2022/07/sirt.jpg'
+  ]
+};
+
 // 事件處理函數
 async function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text') {
@@ -167,32 +188,38 @@ async function handleEvent(event) {
       
       // 找出推薦的產品名稱
       let recommendedProduct = '';
-      let productImages = [];
       
       if (userInput.includes('三高')) {
-        recommendedProduct = '醣可淨';
-        productImages = [
-          'https://jhhealth.com.tw/wp-content/uploads/2024-1225-%E5%B0%B1%E5%A6%A5%E5%AE%9A%E7%94%A2%E5%93%81%E9%A0%81-%E8%AA%BF%E6%95%B4%E8%A8%AD%E8%A8%88-%E4%BF%AE%E6%94%B9%E7%89%881.jpg',
-          'https://jhhealth.com.tw/wp-content/uploads/2023/03/231222-%E5%B0%B1%E5%A6%A5%E5%AE%9A%E5%95%86%E5%93%81%E9%A0%812.jpg'
-        ];
+        recommendedProduct = '三高';
       }
-      else if (userInput.includes('疲勞') || userInput.includes('機能強化')) recommendedProduct = '御薑君';
-      else if (userInput.includes('腸胃')) recommendedProduct = '衛的勝';
-      else if (userInput.includes('骨') || userInput.includes('關節')) recommendedProduct = '藻股康';
-      else if (userInput.includes('窈窕') || userInput.includes('代謝')) recommendedProduct = '靚舒暢';
+      else if (userInput.includes('疲勞') || userInput.includes('機能強化')) {
+        recommendedProduct = '疲勞';
+      }
+      else if (userInput.includes('腸胃')) {
+        recommendedProduct = '腸胃';
+      }
+      else if (userInput.includes('關節')) {
+        recommendedProduct = '關節';
+      }
+      else if (userInput.includes('體重')) {
+        recommendedProduct = '體重';
+      }
       
       // 發送產品圖片(如果有)
-      if (productImages.length > 0) {
+      if (productImages[recommendedProduct] && productImages[recommendedProduct].length > 0) {
         setTimeout(async () => {
           try {
-            for (const imageUrl of productImages) {
+            for (let i = 0; i < productImages[recommendedProduct].length; i++) {
+              const imageUrl = productImages[recommendedProduct][i];
               await lineClient.pushMessage(event.source.userId, {
                 type: 'image',
                 originalContentUrl: imageUrl,
                 previewImageUrl: imageUrl
               });
-              // 多張圖片間隔發送
-              await new Promise(resolve => setTimeout(resolve, 500));
+              // 等待0.5秒再發送下一張圖片
+              if (i < productImages[recommendedProduct].length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 500));
+              }
             }
           } catch (err) {
             console.error('發送圖片失敗:', err);
