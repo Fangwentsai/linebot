@@ -184,14 +184,14 @@ async function handleEvent(event) {
         
         return lineClient.replyMessage(event.replyToken, {
           type: 'text',
-          text: `這是我們的${productType}產品連結，您可以點擊查看更多詳情和購買方式：\n\n${productUrl}\n\n如果有其他問題，隨時都可以問我喔！😊`
+          text: `這是我們的${productType}產品連結，您可以點擊查看更多詳情和購買方式：\n\n${productUrl}\n\n🚚 全館滿2,000即享免運服務，東西直接送到家！😊\n\n如果有其他問題，隨時都可以問我喔！😊`
         });
       } 
       // 沒有推薦過產品，提供通用賣場連結
       else {
         return lineClient.replyMessage(event.replyToken, {
           type: 'text',
-          text: `這是晶璽健康的官方商城，您可以瀏覽所有產品：\n\n${productUrls['賣場']}\n\n您有特定想了解的健康需求嗎？我可以為您推薦最適合的產品！😊`
+          text: `這是晶璽健康的官方商城，您可以瀏覽所有產品：\n\n${productUrls['賣場']}\n\n🚚 全館滿2,000即享免運服務，東西直接送到家！😊\n\n您有特定想了解的健康需求嗎？我可以為您推薦最適合的產品！😊`
         });
       }
     }
@@ -272,7 +272,7 @@ async function handleEvent(event) {
         try {
           await lineClient.pushMessage(event.source.userId, {
             type: 'text',
-            text: productText + '\n\n請爸爸/媽媽參考一下，如果有需要我再提供網頁連結讓您參考😊'
+            text: productText + '\n\n請爸爸/媽媽參考一下，如果有需要我再提供網頁連結讓您參考😊\n\n🚚 另外，晶璽健康現在全館滿2,000即享免運服務，購買後直接送到家唷！😊'
           });
         } catch (err) {
           console.error('發送產品推薦失敗:', err);
@@ -283,13 +283,36 @@ async function handleEvent(event) {
       if (productImages[recommendedProduct] && productImages[recommendedProduct].length > 0) {
         setTimeout(async () => {
           try {
-            // 由於圖片顯示問題，改為發送產品圖片的文字描述
-            await lineClient.pushMessage(event.source.userId, {
-              type: 'text',
-              text: `✨ 產品圖片暫時無法顯示，您可以透過產品鏈接查看詳細圖片和資訊。\n\n如需查看產品和購買，請回覆「我想看產品鏈接」即可。`
-            });
+            // 循環發送每一張產品圖片
+            for (let i = 0; i < productImages[recommendedProduct].length; i++) {
+              try {
+                // 每隔0.5秒發送一張圖片，避免訊息擁擠
+                setTimeout(async () => {
+                  try {
+                    await lineClient.pushMessage(event.source.userId, {
+                      type: 'image',
+                      originalContentUrl: productImages[recommendedProduct][i],
+                      previewImageUrl: productImages[recommendedProduct][i]
+                    });
+                  } catch (imgErr) {
+                    console.error(`發送第${i+1}張產品圖片失敗:`, imgErr);
+                  }
+                }, i * 500);
+              } catch (loopErr) {
+                console.error('圖片循環發送錯誤:', loopErr);
+              }
+            }
           } catch (err) {
-            console.error('發送圖片替代訊息失敗:', err);
+            console.error('發送產品圖片失敗:', err);
+            // 如果圖片發送失敗，發送替代文本
+            try {
+              await lineClient.pushMessage(event.source.userId, {
+                type: 'text',
+                text: `✨ 產品圖片暫時無法顯示，您可以透過產品鏈接查看詳細圖片和資訊。\n\n如需查看產品和購買，請回覆「我想看產品鏈接」即可。`
+              });
+            } catch (textErr) {
+              console.error('發送圖片替代訊息失敗:', textErr);
+            }
           }
         }, 2000);
       }
